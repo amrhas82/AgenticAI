@@ -1,0 +1,39 @@
+##version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ai_playground
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD: ai_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    networks:
+      - ai_network
+
+  streamlit-app:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=postgresql://ai_user:ai_password@postgres:5432/ai_playground
+      - OLLAMA_HOST=host.docker.internal
+    depends_on:
+      - postgres
+    networks:
+      - ai_network
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
+
+networks:
+  ai_network:
