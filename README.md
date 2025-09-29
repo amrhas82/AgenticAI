@@ -13,3 +13,10 @@ A complete local AI agent playground for learning and experimentation. No API ke
 - [High Level Architecture](docs/HLA.md)
 - [Setup Guide](docs/SETUP.md)
 - [Technical Design](docs/HLD.md)
+
+## Troubleshooting
+
+### Docker Permission Issues
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
