@@ -4,6 +4,65 @@ set -euo pipefail
 
 echo "🚀 Setting up AI Agent Playground..."
 
+# -------- Self-diagnosing helpers --------
+SUMMARY=""
+FAIL_COUNT=0
+
+record_ok() {
+    local msg="$1"
+    SUMMARY+=$'\n'"✅ ${msg}"
+}
+
+record_warn() {
+    local msg="$1"
+    SUMMARY+=$'\n'"⚠️  ${msg}"
+}
+
+record_fail() {
+    local msg="$1"
+    SUMMARY+=$'\n'"❌ ${msg}"
+    FAIL_COUNT=$((FAIL_COUNT+1))
+}
+
+wait_for_http() {
+    # wait_for_http URL TIMEOUT_SECS
+    local url="$1"
+    local timeout="${2:-60}"
+    local i=0
+    while (( i < timeout )); do
+        if curl -fsS "$url" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+        i=$((i+1))
+    done
+    return 1
+}
+
+check_postgres_ready() {
+    # Uses host's psql if available
+    local host="${1:-localhost}"
+    local port="${2:-5432}"
+    local db="${3:-ai_playground}"
+    local user="${4:-ai_user}"
+    local password="${5:-ai_password}"
+
+    if ! have_cmd psql; then
+        return 2
+    fi
+
+    local i=0
+    local timeout=60
+    while (( i < timeout )); do
+        if PGPASSWORD="$password" psql -h "$host" -p "$port" -U "$user" -d "$db" -c 'select 1' >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+        i=$((i+1))
+    done
+    return 1
+}
+
 have_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
@@ -69,20 +128,48 @@ ensure_docker() {
     # Ensure daemon is running
     if ! docker info >/dev/null 2>&1; then
         echo "🔁 Starting Docker daemon..."
-        require_sudo
+        require_sudo || true
         sudo systemctl start docker || true
         sleep 2
+    fi
+
+    # Fallback to rootless docker if systemd isn't available or daemon still down
+    if ! docker info >/dev/null 2>&1; then
+        echo "🪄 Trying rootless Docker fallback..."
+        if have_cmd dockerd-rootless-setuptool.sh; then
+            export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            mkdir -p "$XDG_RUNTIME_DIR"
+            dockerd-rootless-setuptool.sh install -f || true
+            nohup dockerd-rootless.sh >/tmp/dockerd-rootless.log 2>&1 &
+            export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+            # If using rootless, never prefix with sudo
+            DOCKER_PREFIX=""
+            sleep 3
+        fi
+    fi
+
+    # Final verification
+    if ! docker info >/dev/null 2>&1; then
+        return 1
     fi
 }
 
 # Install Docker if missing and ensure daemon
-ensure_docker
+if ensure_docker; then
+    record_ok "Docker available and daemon reachable"
+else
+    record_fail "Docker setup failed"
+fi
 
 # Optionally install psql for convenience on apt systems
 if [[ -f /etc/os-release ]]; then
     . /etc/os-release
     if [[ "${ID_LIKE:-}" == *"debian"* ]] || [[ "${ID:-}" == "ubuntu" ]] || [[ "${ID:-}" == "zorin" ]]; then
-        install_postgres_client_apt || true
+        if install_postgres_client_apt; then
+            record_ok "PostgreSQL client installed"
+        else
+            record_warn "PostgreSQL client install skipped/failed"
+        fi
     fi
 fi
 
@@ -90,8 +177,12 @@ fi
 DOCKER_PREFIX=""
 if ! groups "$USER" | grep -q '\bdocker\b'; then
     echo "⚠️  Adding user '$USER' to 'docker' group (to avoid using sudo)..."
-    require_sudo
-    sudo usermod -aG docker "$USER" || true
+    require_sudo || true
+    if sudo usermod -aG docker "$USER"; then
+        record_ok "User added to docker group (re-login needed)"
+    else
+        record_warn "Could not add user to docker group"
+    fi
     echo "ℹ️  You'll need to log out/in for group changes to apply. Continuing this run with sudo..."
     DOCKER_PREFIX="sudo "
 fi
@@ -111,7 +202,13 @@ fi
 # Check if Ollama is installed (optional local runtime)
 if ! have_cmd ollama; then
     echo "❌ Ollama not found. Installing Ollama..."
-    curl -fsSL https://ollama.ai/install.sh | sh || true
+    if curl -fsSL https://ollama.ai/install.sh | sh; then
+        record_ok "Ollama installed"
+    else
+        record_warn "Ollama install failed or skipped"
+    fi
+else
+    record_ok "Ollama already installed"
 fi
 
 # Create .env with sensible defaults if missing (used for local dev)
@@ -128,20 +225,60 @@ fi
 
 # Build and start containers
 echo "🐳 Building and starting Docker containers..."
-${COMPOSE_CMD} down || true
-${COMPOSE_CMD} build --no-cache
+# Ensure DOCKER_HOST is propagated to compose if set
+if [[ -n "${DOCKER_HOST:-}" ]]; then
+    export DOCKER_HOST
+fi
+if ${COMPOSE_CMD} down; then
+    record_ok "Compose: stopped any running services"
+else
+    record_warn "Compose down encountered issues"
+fi
+
+if ${COMPOSE_CMD} build --no-cache; then
+    record_ok "Compose: images built"
+else
+    record_fail "Compose build failed"
+fi
 
 if ${COMPOSE_CMD} up -d; then
-    echo "✅ Setup complete!"
-    echo ""
+    record_ok "Compose: services started"
+else
+    record_fail "Compose up failed"
+fi
+
+# Health checks
+echo "🧪 Running health checks..."
+
+# Check postgres container healthy by trying TCP via psql (host port)
+if check_postgres_ready localhost 5432 ai_playground ai_user ai_password; then
+    record_ok "Postgres responds on localhost:5432"
+else
+    record_warn "Postgres not reachable via psql from host (may still be starting)"
+fi
+
+# Check streamlit endpoint inside container healthcheck and from host
+if wait_for_http "http://localhost:8501/_stcore/health" 90; then
+    record_ok "Streamlit health endpoint responded"
+else
+    record_fail "Streamlit did not respond on http://localhost:8501"
+fi
+
+echo "\n=============================="
+echo "Setup summary"
+echo "=============================="
+echo "$SUMMARY"
+
+if (( FAIL_COUNT > 0 )); then
+    echo "\nSome issues were detected (failures: $FAIL_COUNT)."
+    echo "View logs: ${COMPOSE_CMD} logs --tail=200 | cat"
+    exit 1
+else
+    echo "\n✅ Setup complete!"
     echo "🌐 Streamlit app: http://localhost:8501"
     echo "🗄️  PostgreSQL (in Docker): localhost:5432"
-    echo ""
-    echo "📋 Useful commands:"
-    echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app"
+    echo "\n📋 Useful commands:"
+    echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app | cat"
     echo "   Stop services: ${COMPOSE_CMD} down"
     echo "   Restart: ${COMPOSE_CMD} restart"
-else
-    echo "❌ Docker Compose failed. Check the errors above."
-    exit 1
 fi
