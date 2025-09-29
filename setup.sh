@@ -30,32 +30,32 @@ CURRENT_STEP="startup"
 begin_step() {
     local name="$1"
     CURRENT_STEP="$name"
-    echo "\n— ${name} —"
+    printf "\n— %s —\n" "$name"
 }
 
 print_summary() {
-    echo "\n=============================="
-    echo "Setup summary"
-    echo "=============================="
-    echo "$SUMMARY"
+    printf "\n==============================\n"
+    printf "Setup summary\n"
+    printf "==============================\n"
+    printf "%s\n" "$SUMMARY"
 
     if (( FAIL_COUNT > 0 )); then
-        echo "\nSome issues were detected (failures: $FAIL_COUNT)."
+        printf "\nSome issues were detected (failures: %s).\n" "$FAIL_COUNT"
         if [[ -n "${COMPOSE_CMD:-}" ]]; then
-            echo "View logs: ${COMPOSE_CMD} logs --tail=200 | cat"
+            printf "View logs: %s logs --tail=200 | cat\n" "$COMPOSE_CMD"
         else
-            echo "Docker Compose wasn't available; ensure Docker Desktop/Engine is running."
+            printf "Docker Compose wasn't available; ensure Docker Desktop/Engine is running.\n"
         fi
         exit 1
     else
-        echo "\n✅ Setup complete!"
-        echo "🌐 Streamlit app: http://localhost:8501"
-        echo "🗄️  PostgreSQL (in Docker): localhost:5432"
-        echo "\n📋 Useful commands:"
+        printf "\n✅ Setup complete!\n"
+        printf "🌐 Streamlit app: http://localhost:8501\n"
+        printf "🗄️  PostgreSQL (in Docker): localhost:5432\n"
+        printf "\n📋 Useful commands:\n"
         if [[ -n "${COMPOSE_CMD:-}" ]]; then
-            echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app | cat"
-            echo "   Stop services: ${COMPOSE_CMD} down"
-            echo "   Restart: ${COMPOSE_CMD} restart"
+            printf "   View logs: %s logs -f streamlit-app | cat\n" "$COMPOSE_CMD"
+            printf "   Stop services: %s down\n" "$COMPOSE_CMD"
+            printf "   Restart: %s restart\n" "$COMPOSE_CMD"
         fi
     fi
 }
@@ -117,6 +117,16 @@ have_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
+detect_package_manager() {
+    if have_cmd apt-get; then echo apt; return; fi
+    if have_cmd dnf; then echo dnf; return; fi
+    if have_cmd yum; then echo yum; return; fi
+    if have_cmd zypper; then echo zypper; return; fi
+    if have_cmd pacman; then echo pacman; return; fi
+    if have_cmd apk; then echo apk; return; fi
+    echo unknown
+}
+
 require_sudo() {
     if [[ $(id -u) -ne 0 ]] && ! have_cmd sudo; then
         echo "❌ This script needs administrative privileges but 'sudo' is not available."
@@ -152,32 +162,71 @@ install_docker_apt() {
     sudo systemctl enable --now docker || true
 }
 
-install_postgres_client_apt() {
-    echo "🔧 Installing PostgreSQL client (psql)..."
-    apt_install postgresql-client || true
+install_docker_convenience() {
+    # Use Docker's official convenience script for broad distro coverage
+    require_sudo
+    printf "🔧 Installing Docker via get.docker.com script...\n"
+    curl -fsSL https://get.docker.com | sudo sh
+    printf "✅ Docker installed. Enabling and starting service...\n"
+    sudo systemctl enable --now docker || true
+}
+
+install_postgres_client_any() {
+    local pm
+    pm=$(detect_package_manager)
+    printf "🔧 Installing PostgreSQL client (psql) using %s...\n" "$pm"
+    case "$pm" in
+        apt)
+            apt_install postgresql-client || true
+            ;;
+        dnf)
+            sudo dnf install -y postgresql || true
+            ;;
+        yum)
+            sudo yum install -y postgresql || true
+            ;;
+        zypper)
+            sudo zypper --non-interactive install postgresql || true
+            ;;
+        pacman)
+            sudo pacman -Sy --noconfirm postgresql || true
+            ;;
+        apk)
+            sudo apk add --no-cache postgresql-client || true
+            ;;
+        *)
+            printf "⚠️  Unknown package manager; skipping psql install.\n"
+            return 1
+            ;;
+    esac
 }
 
 ensure_docker() {
     if ! have_cmd docker; then
-        # Detect apt-based systems (Ubuntu/Zorin/Debian)
-        if [[ -f /etc/os-release ]]; then
-            . /etc/os-release
-            if [[ "${ID_LIKE:-}" == *"debian"* ]] || [[ "${ID:-}" == "ubuntu" ]] || [[ "${ID:-}" == "zorin" ]]; then
+        case "$(detect_package_manager)" in
+            apt)
                 require_sudo
                 install_docker_apt
-            else
-                echo "❌ Unsupported distro for automated Docker install (ID=${ID:-unknown}). Install Docker manually."
+                ;;
+            dnf|yum|zypper|pacman|apk)
+                install_docker_convenience
+                ;;
+            *)
+                echo "❌ Could not detect a supported package manager. Please install Docker manually."
                 exit 1
-            fi
-        else
-            echo "❌ Cannot detect OS. Install Docker manually."
-            exit 1
-        fi
+                ;;
+        esac
+    fi
+
+    # If DOCKER_HOST points to an unreachable socket, unset it to allow default
+    if [[ -n "${DOCKER_HOST:-}" ]] && ! docker info >/dev/null 2>&1; then
+        printf "⚠️  DOCKER_HOST='%s' not reachable; falling back to default docker socket.\n" "$DOCKER_HOST"
+        unset DOCKER_HOST
     fi
 
     # Ensure daemon is running
     if ! docker info >/dev/null 2>&1; then
-        echo "🔁 Starting Docker daemon..."
+        printf "🔁 Starting Docker daemon...\n"
         require_sudo || true
         sudo systemctl start docker || true
         sleep 2
@@ -185,7 +234,7 @@ ensure_docker() {
 
     # Fallback to rootless docker if systemd isn't available or daemon still down
     if ! docker info >/dev/null 2>&1; then
-        echo "🪄 Trying rootless Docker fallback..."
+        printf "🪄 Trying rootless Docker fallback...\n"
         if have_cmd dockerd-rootless-setuptool.sh; then
             export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
             mkdir -p "$XDG_RUNTIME_DIR"
@@ -213,16 +262,11 @@ else
 fi
 
 begin_step "Install PostgreSQL client (optional)"
-# Optionally install psql for convenience on apt systems
-if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    if [[ "${ID_LIKE:-}" == *"debian"* ]] || [[ "${ID:-}" == "ubuntu" ]] || [[ "${ID:-}" == "zorin" ]]; then
-        if install_postgres_client_apt; then
-            record_ok "PostgreSQL client installed"
-        else
-            record_warn "PostgreSQL client install skipped/failed"
-        fi
-    fi
+# Try to install psql for convenience across distros
+if install_postgres_client_any; then
+    record_ok "PostgreSQL client installed"
+else
+    record_warn "PostgreSQL client install skipped/failed"
 fi
 
 begin_step "Docker permissions"
@@ -252,6 +296,11 @@ else
     echo "❌ Docker Compose not available even after install."
     echo "   Ensure 'docker-compose-plugin' is installed or install 'docker-compose' binary."
     exit 1
+fi
+
+# Ensure daemon is actually reachable before continuing (gate compose)
+if ! ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
+    record_fail "Docker daemon not reachable"
 fi
 
 # If docker socket is present but current user lacks permission, retry via sudo
@@ -300,6 +349,12 @@ echo "🐳 Building and starting Docker containers..."
 # Ensure DOCKER_HOST is propagated to compose if set
 if [[ -n "${DOCKER_HOST:-}" ]]; then
     export DOCKER_HOST
+fi
+
+# Optional prune of unused images/networks to avoid conflicts
+if [[ "${PRUNE_DOCKER:-0}" == "1" ]]; then
+    printf "🧹 Pruning unused Docker data...\n"
+    ${DOCKER_PREFIX}docker system prune -af --volumes | cat
 fi
 
 # Wrapper to run compose and retry with sudo on permission errors
