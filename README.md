@@ -33,6 +33,9 @@ newgrp docker
 ### Docker daemon not running
 - Start Docker Desktop (Windows/macOS) or `sudo systemctl start docker` (Linux with systemd)
 
+### Rootless Docker / custom DOCKER_HOST
+- If you use rootless Docker, ensure `DOCKER_HOST` points to your socket (e.g., `unix:///run/user/1000/docker.sock`). The setup will fall back if it detects an unreachable `DOCKER_HOST`.
+
 ### Permission denied to /var/run/docker.sock
 - The setup scripts detect this and retry with `sudo` when possible.
 - To fix permanently: add your user to the `docker` group (see above), then log out/in.
@@ -42,6 +45,12 @@ newgrp docker
 - Both scripts print a step-wise summary at the end, including any failures and a hint to view logs.
 - View logs: `docker compose logs -f | cat`
 - Streamlit-only logs: `docker compose logs -f streamlit-app | cat`
+
+### Cleanup before rebuilds
+- To prune unused images/networks/volumes before a rebuild, run:
+```bash
+PRUNE_DOCKER=1 ./setup.sh
+```
 
 ## Ollama: add and manage local models
 

@@ -20,6 +20,12 @@ What it does:
 - Runs health checks for Postgres and Streamlit
 - Prints a summary of successes/failures with next steps
 
+Optional cleanup before rebuilds:
+```bash
+PRUNE_DOCKER=1 ./setup.sh
+```
+This prunes unused images/networks/volumes to avoid conflicts.
+
 ## Windows 10/11 setup (Docker Desktop + WSL2)
 1) Install Docker Desktop and enable WSL2 integration for your distro
 2) From repo root in WSL shell:
@@ -47,6 +53,9 @@ newgrp docker
 - Permission denied to `/var/run/docker.sock`: scripts detect this, retry with sudo when possible, and print guidance
 - View logs: `docker compose logs -f | cat`
 - Streamlit health: the setup waits on `http://localhost:8501/_stcore/health`
+
+Rootless Docker / custom DOCKER_HOST:
+- If you run rootless Docker, set `DOCKER_HOST` to your user socket (e.g., `unix:///run/user/1000/docker.sock`). The setup unsets an unreachable `DOCKER_HOST` and falls back to the default.
 
 ## Ollama: add and manage local models
 

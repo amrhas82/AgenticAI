@@ -117,6 +117,16 @@ have_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
+detect_package_manager() {
+    if have_cmd apt-get; then echo apt; return; fi
+    if have_cmd dnf; then echo dnf; return; fi
+    if have_cmd yum; then echo yum; return; fi
+    if have_cmd zypper; then echo zypper; return; fi
+    if have_cmd pacman; then echo pacman; return; fi
+    if have_cmd apk; then echo apk; return; fi
+    echo unknown
+}
+
 require_sudo() {
     if [[ $(id -u) -ne 0 ]] && ! have_cmd sudo; then
         echo "❌ This script needs administrative privileges but 'sudo' is not available."
@@ -152,27 +162,60 @@ install_docker_apt() {
     sudo systemctl enable --now docker || true
 }
 
-install_postgres_client_apt() {
-    echo "🔧 Installing PostgreSQL client (psql)..."
-    apt_install postgresql-client || true
+install_docker_convenience() {
+    # Use Docker's official convenience script for broad distro coverage
+    require_sudo
+    printf "🔧 Installing Docker via get.docker.com script...\n"
+    curl -fsSL https://get.docker.com | sudo sh
+    printf "✅ Docker installed. Enabling and starting service...\n"
+    sudo systemctl enable --now docker || true
+}
+
+install_postgres_client_any() {
+    local pm
+    pm=$(detect_package_manager)
+    printf "🔧 Installing PostgreSQL client (psql) using %s...\n" "$pm"
+    case "$pm" in
+        apt)
+            apt_install postgresql-client || true
+            ;;
+        dnf)
+            sudo dnf install -y postgresql || true
+            ;;
+        yum)
+            sudo yum install -y postgresql || true
+            ;;
+        zypper)
+            sudo zypper --non-interactive install postgresql || true
+            ;;
+        pacman)
+            sudo pacman -Sy --noconfirm postgresql || true
+            ;;
+        apk)
+            sudo apk add --no-cache postgresql-client || true
+            ;;
+        *)
+            printf "⚠️  Unknown package manager; skipping psql install.\n"
+            return 1
+            ;;
+    esac
 }
 
 ensure_docker() {
     if ! have_cmd docker; then
-        # Detect apt-based systems (Ubuntu/Zorin/Debian)
-        if [[ -f /etc/os-release ]]; then
-            . /etc/os-release
-            if [[ "${ID_LIKE:-}" == *"debian"* ]] || [[ "${ID:-}" == "ubuntu" ]] || [[ "${ID:-}" == "zorin" ]]; then
+        case "$(detect_package_manager)" in
+            apt)
                 require_sudo
                 install_docker_apt
-            else
-                echo "❌ Unsupported distro for automated Docker install (ID=${ID:-unknown}). Install Docker manually."
+                ;;
+            dnf|yum|zypper|pacman|apk)
+                install_docker_convenience
+                ;;
+            *)
+                echo "❌ Could not detect a supported package manager. Please install Docker manually."
                 exit 1
-            fi
-        else
-            echo "❌ Cannot detect OS. Install Docker manually."
-            exit 1
-        fi
+                ;;
+        esac
     fi
 
     # If DOCKER_HOST points to an unreachable socket, unset it to allow default
@@ -219,16 +262,11 @@ else
 fi
 
 begin_step "Install PostgreSQL client (optional)"
-# Optionally install psql for convenience on apt systems
-if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    if [[ "${ID_LIKE:-}" == *"debian"* ]] || [[ "${ID:-}" == "ubuntu" ]] || [[ "${ID:-}" == "zorin" ]]; then
-        if install_postgres_client_apt; then
-            record_ok "PostgreSQL client installed"
-        else
-            record_warn "PostgreSQL client install skipped/failed"
-        fi
-    fi
+# Try to install psql for convenience across distros
+if install_postgres_client_any; then
+    record_ok "PostgreSQL client installed"
+else
+    record_warn "PostgreSQL client install skipped/failed"
 fi
 
 begin_step "Docker permissions"
