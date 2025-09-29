@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -Euo pipefail
 
 echo "🚀 Setting up AI Agent Playground..."
 
@@ -23,6 +23,56 @@ record_fail() {
     SUMMARY+=$'\n'"❌ ${msg}"
     FAIL_COUNT=$((FAIL_COUNT+1))
 }
+
+# Step tracking and robust summary printing
+CURRENT_STEP="startup"
+
+begin_step() {
+    local name="$1"
+    CURRENT_STEP="$name"
+    echo "\n— ${name} —"
+}
+
+print_summary() {
+    echo "\n=============================="
+    echo "Setup summary"
+    echo "=============================="
+    echo "$SUMMARY"
+
+    if (( FAIL_COUNT > 0 )); then
+        echo "\nSome issues were detected (failures: $FAIL_COUNT)."
+        if [[ -n "${COMPOSE_CMD:-}" ]]; then
+            echo "View logs: ${COMPOSE_CMD} logs --tail=200 | cat"
+        else
+            echo "Docker Compose wasn't available; ensure Docker Desktop/Engine is running."
+        fi
+        exit 1
+    else
+        echo "\n✅ Setup complete!"
+        echo "🌐 Streamlit app: http://localhost:8501"
+        echo "🗄️  PostgreSQL (in Docker): localhost:5432"
+        echo "\n📋 Useful commands:"
+        if [[ -n "${COMPOSE_CMD:-}" ]]; then
+            echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app | cat"
+            echo "   Stop services: ${COMPOSE_CMD} down"
+            echo "   Restart: ${COMPOSE_CMD} restart"
+        fi
+    fi
+}
+
+handle_err() {
+    local line="$1"
+    local cmd="$2"
+    if [[ "$cmd" == docker* || "$cmd" == *" docker "* || "$cmd" == *"docker compose"* ]]; then
+        record_fail "Docker command failed in step '${CURRENT_STEP}': ${cmd}"
+        record_warn "If you saw 'permission denied to /var/run/docker.sock', add your user to 'docker' group then log out/in, or re-run with sudo."
+    else
+        record_fail "Error in step '${CURRENT_STEP}' at line ${line}: ${cmd}"
+    fi
+}
+
+trap 'handle_err "$LINENO" "$BASH_COMMAND"' ERR
+trap 'print_summary' EXIT
 
 wait_for_http() {
     # wait_for_http URL TIMEOUT_SECS
@@ -154,6 +204,7 @@ ensure_docker() {
     fi
 }
 
+begin_step "Check/Install Docker"
 # Install Docker if missing and ensure daemon
 if ensure_docker; then
     record_ok "Docker available and daemon reachable"
@@ -161,6 +212,7 @@ else
     record_fail "Docker setup failed"
 fi
 
+begin_step "Install PostgreSQL client (optional)"
 # Optionally install psql for convenience on apt systems
 if [[ -f /etc/os-release ]]; then
     . /etc/os-release
@@ -173,12 +225,14 @@ if [[ -f /etc/os-release ]]; then
     fi
 fi
 
+begin_step "Docker permissions"
 # Handle docker group membership; fall back to sudo when needed
 DOCKER_PREFIX=""
-if ! groups "$USER" | grep -q '\bdocker\b'; then
-    echo "⚠️  Adding user '$USER' to 'docker' group (to avoid using sudo)..."
+CURRENT_USER="${SUDO_USER:-${USER:-$(id -un)}}"
+if ! id -nG "$CURRENT_USER" | grep -q '\bdocker\b'; then
+    echo "⚠️  Adding user '$CURRENT_USER' to 'docker' group (to avoid using sudo)..."
     require_sudo || true
-    if sudo usermod -aG docker "$USER"; then
+    if sudo usermod -aG docker "$CURRENT_USER"; then
         record_ok "User added to docker group (re-login needed)"
     else
         record_warn "Could not add user to docker group"
@@ -187,6 +241,7 @@ if ! groups "$USER" | grep -q '\bdocker\b'; then
     DOCKER_PREFIX="sudo "
 fi
 
+begin_step "Verify Docker/Compose"
 # Verify Docker works
 ${DOCKER_PREFIX}docker --version | sed 's/^/✅ /'
 if ${DOCKER_PREFIX}docker compose version >/dev/null 2>&1; then
@@ -197,6 +252,22 @@ else
     echo "❌ Docker Compose not available even after install."
     echo "   Ensure 'docker-compose-plugin' is installed or install 'docker-compose' binary."
     exit 1
+fi
+
+# If docker socket is present but current user lacks permission, retry via sudo
+if ! ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
+    if docker info 2>&1 | grep -qi 'permission denied'; then
+        record_warn "Docker socket permission denied for current user; retrying with sudo"
+        DOCKER_PREFIX="sudo "
+        if ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
+            record_ok "Docker reachable via sudo"
+            if ${DOCKER_PREFIX}docker compose version >/dev/null 2>&1; then
+                COMPOSE_CMD="${DOCKER_PREFIX}docker compose"
+            elif have_cmd docker-compose; then
+                COMPOSE_CMD="${DOCKER_PREFIX}docker-compose"
+            fi
+        fi
+    fi
 fi
 
 # Check if Ollama is installed (optional local runtime)
@@ -211,6 +282,7 @@ else
     record_ok "Ollama already installed"
 fi
 
+begin_step ".env defaults"
 # Create .env with sensible defaults if missing (used for local dev)
 if [ ! -f .env ]; then
     echo "📝 Creating default .env file..."
@@ -223,31 +295,52 @@ MCP_URL=http://localhost:8080
 EOF
 fi
 
-# Build and start containers
+begin_step "Compose: build and start"
 echo "🐳 Building and starting Docker containers..."
 # Ensure DOCKER_HOST is propagated to compose if set
 if [[ -n "${DOCKER_HOST:-}" ]]; then
     export DOCKER_HOST
 fi
-if ${COMPOSE_CMD} down; then
+
+# Wrapper to run compose and retry with sudo on permission errors
+run_compose() {
+    local output
+    if ! output=$(${COMPOSE_CMD} "$@" 2>&1); then
+        echo "$output"
+        if echo "$output" | grep -qi 'permission denied'; then
+            record_warn "Compose '$*' hit permission denied; retrying with sudo"
+            DOCKER_PREFIX="sudo "
+            if command -v docker-compose >/dev/null 2>&1; then
+                COMPOSE_CMD="${DOCKER_PREFIX}docker-compose"
+            else
+                COMPOSE_CMD="${DOCKER_PREFIX}docker compose"
+            fi
+            ${COMPOSE_CMD} "$@" | cat
+        else
+            return 1
+        fi
+    fi
+}
+
+if run_compose down; then
     record_ok "Compose: stopped any running services"
 else
     record_warn "Compose down encountered issues"
 fi
 
-if ${COMPOSE_CMD} build --no-cache; then
+if run_compose build --no-cache; then
     record_ok "Compose: images built"
 else
     record_fail "Compose build failed"
 fi
 
-if ${COMPOSE_CMD} up -d; then
+if run_compose up -d; then
     record_ok "Compose: services started"
 else
     record_fail "Compose up failed"
 fi
 
-# Health checks
+begin_step "Health checks"
 echo "🧪 Running health checks..."
 
 # Check postgres container healthy by trying TCP via psql (host port)
@@ -264,21 +357,4 @@ else
     record_fail "Streamlit did not respond on http://localhost:8501"
 fi
 
-echo "\n=============================="
-echo "Setup summary"
-echo "=============================="
-echo "$SUMMARY"
-
-if (( FAIL_COUNT > 0 )); then
-    echo "\nSome issues were detected (failures: $FAIL_COUNT)."
-    echo "View logs: ${COMPOSE_CMD} logs --tail=200 | cat"
-    exit 1
-else
-    echo "\n✅ Setup complete!"
-    echo "🌐 Streamlit app: http://localhost:8501"
-    echo "🗄️  PostgreSQL (in Docker): localhost:5432"
-    echo "\n📋 Useful commands:"
-    echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app | cat"
-    echo "   Stop services: ${COMPOSE_CMD} down"
-    echo "   Restart: ${COMPOSE_CMD} restart"
-fi
+# Summary is printed by EXIT trap
