@@ -31,7 +31,6 @@ st.set_page_config(
 
 class AIPlaygroundApp:
     def __init__(self):
-        self.init_session_state()
         try:
             self.config = Config()
             self.ollama = OllamaClient()
@@ -39,6 +38,7 @@ class AIPlaygroundApp:
             self.pdf_processor = PDFProcessor()
             self.vector_db = VectorDB()
             self.mcp_client = MCPClient()
+            self.init_session_state()
         except Exception as e:
             st.error(f"Initialization error: {e}")
             st.stop()
@@ -51,6 +51,10 @@ class AIPlaygroundApp:
             st.session_state.messages = last if last else []
         if 'current_model' not in st.session_state:
             st.session_state.current_model = "llama2"
+        if 'current_agent' not in st.session_state:
+            st.session_state.current_agent = "General Chat"
+        if 'use_rag' not in st.session_state:
+            st.session_state.use_rag = False
 
     def setup_sidebar(self):
         """Setup sidebar with controls and error handling"""
@@ -103,7 +107,21 @@ class AIPlaygroundApp:
             st.subheader("Document Processing")
             uploaded_file = st.file_uploader("Upload Document (pdf, txt, md)", type=["pdf", "txt", "md"]) 
             if uploaded_file is not None:
-                if st.button("Process PDF"):
+                if st.button("Process Document"):
+                    try:
+                        name = getattr(uploaded_file, 'name', 'uploaded')
+                        if name.lower().endswith('.pdf'):
+                            chunks = self.pdf_processor.process_pdf(uploaded_file)
+                        else:
+                            content = uploaded_file.read().decode('utf-8', errors='ignore')
+                            chunks = self._split_text(content)
+                        if chunks:
+                            self.vector_db.store_document(chunks, name)
+                            st.success(f"Processed and stored {len(chunks)} chunks from '{name}'.")
+                        else:
+                            st.warning("No content extracted from the document.")
+                    except Exception as e:
+                        st.error(f"Document processing error: {e}")
 
             # System info
             st.subheader("System Info")
@@ -135,6 +153,36 @@ class AIPlaygroundApp:
             with st.chat_message("user"):
                 st.markdown(prompt)
 
+            # Build system prompt and optional RAG context
+            system_prompt = self._get_system_prompt()
+            rag_context = None
+            if st.session_state.use_rag:
+                try:
+                    hits = self.vector_db.search_similar(prompt)
+                    rag_context = "\n\n".join(hits) if hits else None
+                except Exception as e:
+                    st.warning(f"RAG retrieval error: {e}")
+
+            augmented = self._build_augmented_prompt(prompt, system_prompt, rag_context)
+
+            # Generate response
+            try:
+                model = st.session_state.current_model
+                reply = self.ollama.generate_response(augmented, st.session_state.messages, model)
+            except Exception as e:
+                reply = f"There was an error generating a response: {e}"
+
+            # Add assistant message
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+            with st.chat_message("assistant"):
+                st.markdown(reply)
+
+            # Persist conversation
+            try:
+                self.memory.save_conversation(st.session_state.messages)
+            except Exception:
+                pass
+
     def _get_system_prompt(self) -> str:
         agent = st.session_state.current_agent
         if agent == "Coder (DeepSeek style)":
@@ -156,6 +204,20 @@ class AIPlaygroundApp:
             parts.append(f"[Context]\n{rag_context}")
         parts.append(f"[User]\n{user_prompt}")
         return "\n\n".join(parts)
+
+    def _split_text(self, text: str):
+        """Split plain text into overlapping chunks (mirrors PDFProcessor)."""
+        words = text.split()
+        chunks = []
+        chunk_size = 1000
+        chunk_overlap = 200
+        for i in range(0, len(words), chunk_size - chunk_overlap):
+            chunk = " ".join(words[i:i + chunk_size])
+            if chunk:
+                chunks.append(chunk)
+            if i + chunk_size >= len(words):
+                break
+        return chunks
 
     def run(self):
         """Main application runner"""

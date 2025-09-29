@@ -3,6 +3,8 @@ from typing import List, Dict
 
 class OllamaClient:
     def __init__(self):
+        # Instantiate a reusable Ollama client
+        self.client = ollama.Client()
 
     def get_available_models(self) -> List[str]:
         """Get list of available Ollama models with error handling"""
@@ -10,8 +12,8 @@ class OllamaClient:
             models = self.client.list()
             return [model['name'] for model in models['models']]
         except Exception as e:
-            st.error(f"Error fetching models: {e}")
-            return ["llama2", "mistral"]  # Fallback
+            # Avoid UI dependencies here; return reasonable defaults
+            return ["llama2", "mistral"]
 
     def generate_response(self, prompt: str, history: List[Dict], model: str) -> str:
         """Generate response from Ollama model with error handling"""
