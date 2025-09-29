@@ -1,17 +1,8 @@
 import ollama
 from typing import List, Dict
-import streamlit as st
-
 
 class OllamaClient:
     def __init__(self):
-        try:
-            self.client = ollama.Client()
-            # Test connection
-            self.client.list()
-        except Exception as e:
-            st.error(f"Ollama connection failed: {e}")
-            raise
 
     def get_available_models(self) -> List[str]:
         """Get list of available Ollama models with error handling"""

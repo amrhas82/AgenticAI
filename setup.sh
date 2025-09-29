@@ -34,14 +34,7 @@ fi
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
-    cp .env.example .env
-    echo "✅ Created .env file from example"
-fi
 
-# Pull default models
-echo "📥 Pulling Ollama models (this may take a while)..."
-ollama pull llama2 || echo "⚠️  Failed to pull llama2"
-ollama pull mistral || echo "⚠️  Failed to pull mistral"
 
 # Build and start containers
 echo "🐳 Building and starting Docker containers..."
