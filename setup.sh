@@ -12,14 +12,27 @@ fi
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
-    cp .env.example .env
-    echo "Created .env file from example"
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        echo "Created .env file from example"
+    else
+        echo "WARNING: .env.example not found, creating minimal .env"
+        cat > .env <<'EOF'
+DATABASE_URL=postgresql://ai_user:ai_password@postgres:5432/ai_playground
+OLLAMA_HOST=http://host.docker.internal:11434
+EMBED_MODEL=nomic-embed-text
+EMBED_DIM=768
+MCP_URL=http://host.docker.internal:8080
+EOF
+    fi
 fi
 
 # Pull default models
 echo "Pulling Ollama models (this may take a while)..."
-ollama pull llama2
-ollama pull mistral
+ollama pull llama2 || true
+ollama pull mistral || true
+ollama pull nomic-embed-text || true
+ollama pull deepseek-coder:6.7b || true
 
 # Build and start containers (THIS IS THE KEY - uses Docker, not local Python)
 echo "Building and starting Docker containers..."

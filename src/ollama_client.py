@@ -1,10 +1,15 @@
 import ollama
 from typing import List, Dict
+import os
 
 
 class OllamaClient:
     def __init__(self):
-        self.client = ollama.Client()
+        host = os.getenv("OLLAMA_HOST")
+        if host:
+            self.client = ollama.Client(host=host)
+        else:
+            self.client = ollama.Client()
 
     def get_available_models(self) -> List[str]:
         """Get list of available Ollama models"""

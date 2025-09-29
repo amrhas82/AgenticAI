@@ -24,13 +24,18 @@ services:
       - ./data:/app/data
     environment:
       - DATABASE_URL=postgresql://ai_user:ai_password@postgres:5432/ai_playground
-      - OLLAMA_HOST=host.docker.internal
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - EMBED_MODEL=nomic-embed-text
+      - EMBED_DIM=768
+      - MCP_URL=http://host.docker.internal:8080
     depends_on:
       - postgres
     networks:
       - ai_network
     stdin_open: true
     tty: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

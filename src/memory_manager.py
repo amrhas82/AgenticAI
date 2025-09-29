@@ -49,3 +49,10 @@ class MemoryManager:
         except Exception as e:
             print(f"Error loading conversations: {e}")
             return []
+
+    def load_last_conversation(self) -> List[Dict]:
+        """Load most recent conversation messages or empty list"""
+        conversations = self.load_conversations()
+        if not conversations:
+            return []
+        return conversations[-1].get("messages", [])

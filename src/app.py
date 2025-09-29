@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from typing import Optional
 
 from ollama_client import OllamaClient
 from memory_manager import MemoryManager
@@ -34,9 +35,15 @@ class AIPlaygroundApp:
 
         # Initialize session state
         if 'messages' not in st.session_state:
-            st.session_state.messages = []
+            # Attempt to restore last conversation
+            last = self.memory.load_last_conversation()
+            st.session_state.messages = last if last else []
         if 'current_model' not in st.session_state:
             st.session_state.current_model = "llama2"
+        if 'current_agent' not in st.session_state:
+            st.session_state.current_agent = "General Chat"
+        if 'use_rag' not in st.session_state:
+            st.session_state.use_rag = False
 
     def setup_sidebar(self):
         """Setup sidebar with controls"""
@@ -57,6 +64,16 @@ class AIPlaygroundApp:
                 st.session_state.current_model = selected_model
                 st.rerun()
 
+            # Agent selection
+            st.subheader("Agent Settings")
+            agents = ["General Chat", "RAG Assistant", "Coder (DeepSeek style)"]
+            selected_agent = st.selectbox("Choose Agent:", agents, index=agents.index(st.session_state.current_agent) if st.session_state.current_agent in agents else 0)
+            use_rag = st.toggle("Enable RAG context", value=st.session_state.use_rag)
+            if selected_agent != st.session_state.current_agent or use_rag != st.session_state.use_rag:
+                st.session_state.current_agent = selected_agent
+                st.session_state.use_rag = use_rag
+                st.rerun()
+
             # Theme selection
             st.subheader("UI Settings")
             theme = st.selectbox("Theme", ["Light", "Dark"], index=1)
@@ -69,11 +86,15 @@ class AIPlaygroundApp:
 
             # PDF Processing
             st.subheader("Document Processing")
-            uploaded_file = st.file_uploader("Upload PDF", type="pdf")
+            uploaded_file = st.file_uploader("Upload Document (pdf, txt, md)", type=["pdf", "txt", "md"]) 
             if uploaded_file is not None:
                 if st.button("Process PDF"):
                     with st.spinner("Processing PDF..."):
-                        text_chunks = self.pdf_processor.process_pdf(uploaded_file)
+                        if uploaded_file.type == "application/pdf" or uploaded_file.name.lower().endswith(".pdf"):
+                            text_chunks = self.pdf_processor.process_pdf(uploaded_file)
+                        else:
+                            raw_text = uploaded_file.read().decode("utf-8", errors="ignore")
+                            text_chunks = self.pdf_processor._split_text(raw_text)
                         self.vector_db.store_document(text_chunks, uploaded_file.name)
                         st.success(f"Processed {len(text_chunks)} chunks from {uploaded_file.name}")
 
@@ -104,11 +125,22 @@ class AIPlaygroundApp:
             with st.chat_message("user"):
                 st.markdown(prompt)
 
+            # Prepare system prompt
+            system_prompt = self._get_system_prompt()
+
+            # Retrieve RAG context if enabled
+            rag_context = None
+            if st.session_state.use_rag or st.session_state.current_agent == "RAG Assistant":
+                top_chunks = self.vector_db.search_similar(prompt, limit=5)
+                if top_chunks:
+                    rag_context = "\n\n".join(top_chunks)
+
             # Get AI response
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
+                    augmented_prompt = self._build_augmented_prompt(prompt, system_prompt, rag_context)
                     response = self.ollama.generate_response(
-                        prompt,
+                        augmented_prompt,
                         st.session_state.messages[:-1],  # Previous messages for context
                         st.session_state.current_model
                     )
@@ -119,6 +151,28 @@ class AIPlaygroundApp:
 
             # Save to memory
             self.memory.save_conversation(st.session_state.messages)
+
+    def _get_system_prompt(self) -> str:
+        agent = st.session_state.current_agent
+        if agent == "Coder (DeepSeek style)":
+            return (
+                "You are a meticulous coding assistant inspired by DeepSeek's reasoning. "
+                "Plan before coding, propose structured steps, write clear, runnable code, "
+                "and verify outputs mentally. Prefer local tools and minimal dependencies."
+            )
+        if agent == "RAG Assistant":
+            return (
+                "You augment answers with retrieved document context. Cite which chunks you used. "
+                "If context is insufficient, say so and ask for more docs."
+            )
+        return "You are a helpful local AI assistant."
+
+    def _build_augmented_prompt(self, user_prompt: str, system_prompt: str, rag_context: Optional[str]) -> str:
+        parts = [f"[System]\n{system_prompt}"]
+        if rag_context:
+            parts.append(f"[Context]\n{rag_context}")
+        parts.append(f"[User]\n{user_prompt}")
+        return "\n\n".join(parts)
 
     def run(self):
         """Main application runner"""
