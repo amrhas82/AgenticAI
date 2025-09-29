@@ -1,8 +1,9 @@
 streamlit==1.28.0
 ollama==0.1.7
 psycopg2-binary==2.9.7
+# Align core with community (community 0.0.10 requires core >=0.1.8,<0.2)
 langchain-community==0.0.10
-langchain-core==0.1.0
+langchain-core>=0.1.8,<0.2
 langchain-text-splitters==0.0.1
 pypdf2==3.0.1
 python-dotenv==1.0.0
