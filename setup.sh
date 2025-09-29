@@ -30,32 +30,32 @@ CURRENT_STEP="startup"
 begin_step() {
     local name="$1"
     CURRENT_STEP="$name"
-    echo "\n— ${name} —"
+    printf "\n— %s —\n" "$name"
 }
 
 print_summary() {
-    echo "\n=============================="
-    echo "Setup summary"
-    echo "=============================="
-    echo "$SUMMARY"
+    printf "\n==============================\n"
+    printf "Setup summary\n"
+    printf "==============================\n"
+    printf "%s\n" "$SUMMARY"
 
     if (( FAIL_COUNT > 0 )); then
-        echo "\nSome issues were detected (failures: $FAIL_COUNT)."
+        printf "\nSome issues were detected (failures: %s).\n" "$FAIL_COUNT"
         if [[ -n "${COMPOSE_CMD:-}" ]]; then
-            echo "View logs: ${COMPOSE_CMD} logs --tail=200 | cat"
+            printf "View logs: %s logs --tail=200 | cat\n" "$COMPOSE_CMD"
         else
-            echo "Docker Compose wasn't available; ensure Docker Desktop/Engine is running."
+            printf "Docker Compose wasn't available; ensure Docker Desktop/Engine is running.\n"
         fi
         exit 1
     else
-        echo "\n✅ Setup complete!"
-        echo "🌐 Streamlit app: http://localhost:8501"
-        echo "🗄️  PostgreSQL (in Docker): localhost:5432"
-        echo "\n📋 Useful commands:"
+        printf "\n✅ Setup complete!\n"
+        printf "🌐 Streamlit app: http://localhost:8501\n"
+        printf "🗄️  PostgreSQL (in Docker): localhost:5432\n"
+        printf "\n📋 Useful commands:\n"
         if [[ -n "${COMPOSE_CMD:-}" ]]; then
-            echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app | cat"
-            echo "   Stop services: ${COMPOSE_CMD} down"
-            echo "   Restart: ${COMPOSE_CMD} restart"
+            printf "   View logs: %s logs -f streamlit-app | cat\n" "$COMPOSE_CMD"
+            printf "   Stop services: %s down\n" "$COMPOSE_CMD"
+            printf "   Restart: %s restart\n" "$COMPOSE_CMD"
         fi
     fi
 }
@@ -175,9 +175,15 @@ ensure_docker() {
         fi
     fi
 
+    # If DOCKER_HOST points to an unreachable socket, unset it to allow default
+    if [[ -n "${DOCKER_HOST:-}" ]] && ! docker info >/dev/null 2>&1; then
+        printf "⚠️  DOCKER_HOST='%s' not reachable; falling back to default docker socket.\n" "$DOCKER_HOST"
+        unset DOCKER_HOST
+    fi
+
     # Ensure daemon is running
     if ! docker info >/dev/null 2>&1; then
-        echo "🔁 Starting Docker daemon..."
+        printf "🔁 Starting Docker daemon...\n"
         require_sudo || true
         sudo systemctl start docker || true
         sleep 2
@@ -185,7 +191,7 @@ ensure_docker() {
 
     # Fallback to rootless docker if systemd isn't available or daemon still down
     if ! docker info >/dev/null 2>&1; then
-        echo "🪄 Trying rootless Docker fallback..."
+        printf "🪄 Trying rootless Docker fallback...\n"
         if have_cmd dockerd-rootless-setuptool.sh; then
             export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
             mkdir -p "$XDG_RUNTIME_DIR"
@@ -254,6 +260,11 @@ else
     exit 1
 fi
 
+# Ensure daemon is actually reachable before continuing (gate compose)
+if ! ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
+    record_fail "Docker daemon not reachable"
+fi
+
 # If docker socket is present but current user lacks permission, retry via sudo
 if ! ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
     if docker info 2>&1 | grep -qi 'permission denied'; then
@@ -300,6 +311,12 @@ echo "🐳 Building and starting Docker containers..."
 # Ensure DOCKER_HOST is propagated to compose if set
 if [[ -n "${DOCKER_HOST:-}" ]]; then
     export DOCKER_HOST
+fi
+
+# Optional prune of unused images/networks to avoid conflicts
+if [[ "${PRUNE_DOCKER:-0}" == "1" ]]; then
+    printf "🧹 Pruning unused Docker data...\n"
+    ${DOCKER_PREFIX}docker system prune -af --volumes | cat
 fi
 
 # Wrapper to run compose and retry with sudo on permission errors
