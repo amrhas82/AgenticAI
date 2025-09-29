@@ -47,3 +47,41 @@ newgrp docker
 - Permission denied to `/var/run/docker.sock`: scripts detect this, retry with sudo when possible, and print guidance
 - View logs: `docker compose logs -f | cat`
 - Streamlit health: the setup waits on `http://localhost:8501/_stcore/health`
+
+## Ollama: add and manage local models
+
+Ensure Ollama is running (Linux: `ollama serve`; macOS/Windows: start the Ollama app). Common commands:
+
+```bash
+# Pull models
+ollama pull llama3
+ollama pull mistral
+ollama pull qwen2.5:7b
+ollama pull phi3:mini
+
+# Coding-focused
+ollama pull codellama:7b-instruct
+
+# Embeddings (for RAG)
+ollama pull nomic-embed-text
+
+# Run interactively
+ollama run llama3
+
+# List installed
+ollama list
+
+# Remove
+ollama rm <model-name>
+
+# Create a custom model (Modelfile)
+# Modelfile contents:
+#   FROM llama3
+#   SYSTEM You are a concise helpful assistant.
+ollama create mymodel -f Modelfile
+ollama run mymodel
+```
+
+App notes
+- Containers reach Ollama via `OLLAMA_HOST` (defaults to host). Update `.env` if running Ollama elsewhere.
+- Change embeddings via `EMBED_MODEL` in `.env` and restart compose.
