@@ -33,6 +33,11 @@ newgrp docker
 ### Docker daemon not running
 - Start Docker Desktop (Windows/macOS) or `sudo systemctl start docker` (Linux with systemd)
 
+### Install Docker on Ubuntu (manual) and rootless mode
+- See the Setup Guide for step-by-step commands:
+  - [Manual Docker install (Ubuntu 24.04+/25.04)](docs/SETUP.md#manual-docker-install-ubuntu-2404-2504)
+  - [Optional: Rootless Docker](docs/SETUP.md#optional-rootless-docker)
+
 ### Rootless Docker / custom DOCKER_HOST
 - If you use rootless Docker, ensure `DOCKER_HOST` points to your socket (e.g., `unix:///run/user/1000/docker.sock`). The setup will fall back if it detects an unreachable `DOCKER_HOST`.
 
