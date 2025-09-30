@@ -75,6 +75,23 @@ handle_err() {
 trap 'handle_err "$LINENO" "$BASH_COMMAND"' ERR
 trap 'print_summary' EXIT
 
+# Clear obviously stale/broken DOCKER_HOST early
+if [[ -n "${DOCKER_HOST:-}" ]]; then
+    if ! docker info >/dev/null 2>&1; then
+        # If points to a non-existent user socket, drop it
+        if [[ "$DOCKER_HOST" == unix://*/docker.sock ]]; then
+            sock_path="${DOCKER_HOST#unix://}"
+            if [[ ! -S "$sock_path" ]]; then
+                printf "⚠️  Clearing stale DOCKER_HOST=%s (socket missing)\n" "$DOCKER_HOST"
+                unset DOCKER_HOST
+            fi
+        else
+            printf "⚠️  Clearing unreachable DOCKER_HOST=%s\n" "$DOCKER_HOST"
+            unset DOCKER_HOST
+        fi
+    fi
+fi
+
 wait_for_http() {
     # wait_for_http URL TIMEOUT_SECS
     local url="$1"
@@ -238,6 +255,13 @@ ensure_docker() {
         sleep 3
     fi
 
+    # If non-root cannot access, try with sudo (prefer system docker over rootless)
+    if ! docker info >/dev/null 2>&1; then
+        if sudo docker info >/dev/null 2>&1; then
+            DOCKER_PREFIX="sudo "
+        fi
+    fi
+
     # Fallback to rootless docker if system daemon still down
     if ! docker info >/dev/null 2>&1; then
         printf "🪄 Trying rootless Docker fallback...\n"
@@ -253,6 +277,14 @@ ensure_docker() {
                 printf "🔧 Installing rootless Docker prerequisites...\n"
                 case "$(detect_package_manager)" in
                     apt)
+                        # Ensure 'universe' repo (Ubuntu/Zorin) for slirp4netns/fuse-overlayfs
+                        if command -v add-apt-repository >/dev/null 2>&1; then
+                            sudo add-apt-repository -y universe || true
+                        else
+                            sudo apt-get install -y software-properties-common || true
+                            sudo add-apt-repository -y universe || true
+                        fi
+                        sudo apt-get update -y || true
                         apt_install uidmap dbus-user-session slirp4netns fuse-overlayfs || true
                         ;;
                     dnf)
@@ -293,7 +325,7 @@ ensure_docker() {
                 printf "[ERROR] Rootless Docker prerequisites missing.\n"
                 printf "[ERROR] Install recommended packages and re-run.\n"
                 printf "########## BEGIN ##########\n"
-                printf "sudo sh -eux <<EOF\napt-get update -y\napt-get install -y uidmap dbus-user-session slirp4netns fuse-overlayfs\nEOF\n"
+                printf "sudo sh -eux <<EOF\napt-get update -y\napt-get install -y software-properties-common\nadd-apt-repository -y universe\napt-get update -y\napt-get install -y uidmap dbus-user-session slirp4netns fuse-overlayfs\nEOF\n"
                 printf "########## END ##########\n"
             fi
         fi
@@ -421,13 +453,25 @@ fi
 
 # Optional prune of unused images/networks to avoid conflicts
 if [[ "${PRUNE_DOCKER:-0}" == "1" ]]; then
-    printf "🧹 Pruning unused Docker data...\n"
-    ${DOCKER_PREFIX}docker system prune -af --volumes | cat
+    if ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
+        printf "🧹 Pruning unused Docker data...\n"
+        ${DOCKER_PREFIX}docker system prune -af --volumes | cat || true
+    else
+        printf "⚠️  Skipping prune: Docker daemon not reachable.\n"
+    fi
 fi
 
 # Wrapper to run compose and retry with sudo on permission errors
 run_compose() {
     local output
+    # If DOCKER_HOST points to non-existent rootless socket, temporarily unset for this call
+    local saved_docker_host="${DOCKER_HOST:-}"
+    if [[ -n "${DOCKER_HOST:-}" && "$DOCKER_HOST" == unix://*/docker.sock ]]; then
+        local sock_path="${DOCKER_HOST#unix://}"
+        if [[ ! -S "$sock_path" ]]; then
+            unset DOCKER_HOST
+        fi
+    fi
     if ! output=$(${COMPOSE_CMD} "$@" 2>&1); then
         echo "$output"
         if echo "$output" | grep -qi 'permission denied'; then
@@ -439,10 +483,23 @@ run_compose() {
                 COMPOSE_CMD="${DOCKER_PREFIX}docker compose"
             fi
             ${COMPOSE_CMD} "$@" | cat
+        elif echo "$output" | grep -qi 'Cannot connect to the Docker daemon' && [[ -z "${DOCKER_PREFIX:-}" ]]; then
+            record_warn "Compose '$*' cannot reach daemon; retrying with sudo"
+            DOCKER_PREFIX="sudo "
+            if command -v docker-compose >/dev/null 2>&1; then
+                COMPOSE_CMD="${DOCKER_PREFIX}docker-compose"
+            else
+                COMPOSE_CMD="${DOCKER_PREFIX}docker compose"
+            fi
+            ${COMPOSE_CMD} "$@" | cat
         else
+            # restore DOCKER_HOST and bubble up error
+            if [[ -n "$saved_docker_host" ]]; then export DOCKER_HOST="$saved_docker_host"; fi
             return 1
         fi
     fi
+    # restore DOCKER_HOST after success
+    if [[ -n "$saved_docker_host" ]]; then export DOCKER_HOST="$saved_docker_host"; fi
 }
 
 if run_compose down; then
