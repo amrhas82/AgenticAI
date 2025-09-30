@@ -37,7 +37,8 @@ Thumbs.db
 **/tmp/
 
 # Project data and caches
-/data/memory/
+/data/memory/*
+!/data/memory/.gitkeep
 /data/vector_store.json
 /data/documents/*.tmp
 *.cache
