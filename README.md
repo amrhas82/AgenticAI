@@ -99,7 +99,15 @@ ollama run mymodel
 ```
 
 Notes for this app
-- `OLLAMA_HOST` is set so containers can reach the host’s Ollama (`host.docker.internal`). If you run Ollama elsewhere, update `.env` accordingly and restart compose.
+- The app now respects `OLLAMA_HOST` everywhere (chat and embeddings). Set it to the reachable URL from where Streamlit runs.
+  - If running Streamlit locally (no Docker): `export OLLAMA_HOST=http://localhost:11434`
+  - If running in Docker on Linux: keep `extra_hosts` and set `OLLAMA_HOST=http://host.docker.internal:11434` in `docker-compose.yml`.
+    - If requests from the container fail: start Ollama bound to all interfaces so the container can reach it: `pkill -f "ollama serve" || true && OLLAMA_HOST=0.0.0.0:11434 ollama serve &`
+  - Verify connectivity from the same context as Streamlit:
+    ```bash
+    curl -sS $OLLAMA_HOST/api/tags | jq '.' | head -n 20 || curl -sS $OLLAMA_HOST/api/tags
+    ```
+- After pulling a new chat model, you do not need to restart the model server, but you may need to reload the Streamlit page to see it in the “Choose Local Model” list.
 - To change the embedding model used by the app, set `EMBED_MODEL` in `.env` (e.g., `nomic-embed-text`) and restart:
 ```bash
 docker compose restart
@@ -107,3 +115,7 @@ docker compose restart
 
 ### Port conflicts
 - Change published ports in `docker-compose.yml` if 8501 or 5432 are taken.
+
+## UI notes
+- Theme toggle (Light/Dark) works via the sidebar and applies immediately.
+- MCP URL can be configured from the sidebar; status will show reachable/unreachable info.

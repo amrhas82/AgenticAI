@@ -17,7 +17,8 @@ class VectorDB:
         self.connection_string = os.getenv("DATABASE_URL")
         self.embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text")
         self.embed_dim = int(os.getenv("EMBED_DIM", "768"))
-        self._ollama = ollama.Client()
+        self._ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self._ollama = ollama.Client(host=self._ollama_host)
         # JSON fallback when Postgres or psycopg2 is unavailable
         self._use_postgres = bool(self.connection_string) and _HAVE_PSYCOPG2
         self._json_path = os.getenv("VECTOR_JSON_PATH", "data/memory/vector_store.json")
@@ -110,7 +111,7 @@ class VectorDB:
                     vector = vector + [0.0] * (self.embed_dim - len(vector))
             return vector
         except Exception as e:
-            print(f"Error generating embedding: {e}")
+            print(f"Error generating embedding: {e}. Ensure Ollama is reachable at {self._ollama_host} and the embed model '{self.embed_model}' is installed.")
             return [0.0] * self.embed_dim
 
     def _to_pgvector(self, vector: List[float]) -> str:

@@ -23,7 +23,7 @@ except Exception as e:
     st.error(f"Module import error: {e}. Please check your installation.")
     st.stop()
 
-# Page configuration
+# Page configuration (theme applied via session state toggle later)
 st.set_page_config(
     page_title="AI Agent Playground",
     page_icon="🤖",
@@ -49,6 +49,8 @@ class AIPlaygroundApp:
             st.session_state.messages = []
         if 'provider' not in st.session_state:
             st.session_state.provider = "Local (Ollama)"
+        if 'theme' not in st.session_state:
+            st.session_state.theme = "Dark"
         if 'current_model' not in st.session_state:
             st.session_state.current_model = "llama2"
         if 'openai_model' not in st.session_state:
@@ -59,6 +61,8 @@ class AIPlaygroundApp:
             st.session_state.current_agent = "General Chat"
         if 'use_rag' not in st.session_state:
             st.session_state.use_rag = False
+        if 'mcp_url' not in st.session_state:
+            st.session_state.mcp_url = os.getenv("MCP_URL", "http://localhost:8080")
 
     def setup_sidebar(self):
         """Setup sidebar with controls and error handling"""
@@ -119,9 +123,12 @@ class AIPlaygroundApp:
                 st.session_state.use_rag = use_rag
                 st.rerun()
 
-            # Theme selection
+            # Theme selection (applies by injecting CSS; Streamlit needs rerun)
             st.subheader("UI Settings")
-            theme = st.selectbox("Theme", ["Light", "Dark"], index=1)
+            theme = st.selectbox("Theme", ["Light", "Dark"], index=0 if st.session_state.theme == "Light" else 1)
+            if theme != st.session_state.theme:
+                st.session_state.theme = theme
+                st.rerun()
 
             # Memory management
             st.subheader("Memory")
@@ -171,6 +178,10 @@ class AIPlaygroundApp:
 
             # MCP Status with error handling
             st.subheader("MCP Status")
+            mcp_input = st.text_input("MCP URL", value=st.session_state.mcp_url)
+            if mcp_input != st.session_state.mcp_url:
+                st.session_state.mcp_url = mcp_input
+                self.mcp_client.update_url(mcp_input)
             try:
                 mcp_status = self.mcp_client.get_status()
                 st.write(f"Klavis MCP: {mcp_status}")
@@ -181,6 +192,27 @@ class AIPlaygroundApp:
         """Display chat interface with error handling"""
         st.title("💬 AI Agent Playground")
         st.markdown("Chat with local AI models and explore agent capabilities!")
+
+        # Apply theme by simple CSS variables (affects background and text)
+        if st.session_state.theme == "Dark":
+            st.markdown(
+                """
+                <style>
+                .stApp { background-color: #0e1117; color: #e8eaed; }
+                .stMarkdown, .stTextInput, .stButton, .stSelectbox, .stRadio { color: #e8eaed; }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <style>
+                .stApp { background-color: #ffffff; color: #111827; }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
 
         # Display chat messages
         for message in st.session_state.messages:

@@ -262,5 +262,14 @@ ollama run mymodel
 ```
 
 App notes
-- Containers reach Ollama via `OLLAMA_HOST` (defaults to host). Update `.env` if running Ollama elsewhere.
+- The app respects `OLLAMA_HOST` in both chat and embeddings. Set it to the reachable base URL from where Streamlit runs.
+  - Local host run: `export OLLAMA_HOST=http://localhost:11434`
+  - Docker (Linux): in `docker-compose.yml` use `OLLAMA_HOST=http://host.docker.internal:11434` and keep `extra_hosts: ["host.docker.internal:host-gateway"]`.
+    - If requests from the container fail: run Ollama bound to all interfaces so the container can reach it:
+      ```bash
+      pkill -f "ollama serve" || true
+      OLLAMA_HOST=0.0.0.0:11434 ollama serve &
+      ```
+  - Verify from within the container: `docker compose exec streamlit-app curl -sS http://host.docker.internal:11434/api/tags`
+- After `ollama pull <model>`, refresh the Streamlit UI to see the model in the “Choose Local Model” list.
 - Change embeddings via `EMBED_MODEL` in `.env` and restart compose.
