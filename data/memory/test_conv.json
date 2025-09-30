@@ -1,0 +1,17 @@
+{
+  "conversations": [
+    {
+      "timestamp": "2025-09-30T10:16:46.037590",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "hello"
+        }
+      ]
+    }
+  ]
+}
