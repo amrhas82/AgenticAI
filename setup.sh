@@ -95,7 +95,7 @@ fi
 wait_for_http() {
     # wait_for_http URL TIMEOUT_SECS
     local url="$1"
-    local timeout="${2:-60}"
+    local timeout="${2:-120}"
     local i=0
     while (( i < timeout )); do
         if curl -fsS "$url" >/dev/null 2>&1; then
@@ -120,7 +120,7 @@ check_postgres_ready() {
     fi
 
     local i=0
-    local timeout=60
+    local timeout=120
     while (( i < timeout )); do
         if PGPASSWORD="$password" psql -h "$host" -p "$port" -U "$user" -d "$db" -c 'select 1' >/dev/null 2>&1; then
             return 0
