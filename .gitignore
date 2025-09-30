@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.build/
+.dist/
+.python-version
+.venv/
+venv/
+ENV/
+*.log
+
+# Jupyter/IPython
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+**/postgres_data/
+**/docker-data/
+**/tmp/
+
+# Project data and caches
+/data/memory/
+/data/vector_store.json
+/data/documents/*.tmp
+*.cache
+
+# Local env/config
+.env
+.env.*
+
+# Build artifacts
+build/
+dist/
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# Coverage/testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Misc
+*.bak
+*.orig
+*.patch
