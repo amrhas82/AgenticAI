@@ -3,6 +3,14 @@ import json
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+
+from ollama_client import OllamaClient
+from memory_manager import MemoryManager
+from pdf_processor import PDFProcessor
+from vector_db import VectorDB
+from mcp_client import MCPClient
+from utils.config import Config
+from openai_client import OpenAIClient
 from typing import Optional
 
 # Load environment variables
@@ -31,47 +39,79 @@ st.set_page_config(
 
 class AIPlaygroundApp:
     def __init__(self):
-        try:
-            self.config = Config()
-            self.ollama = OllamaClient()
-            self.memory = MemoryManager()
-            self.pdf_processor = PDFProcessor()
-            self.vector_db = VectorDB()
-            self.mcp_client = MCPClient()
-            self.init_session_state()
-        except Exception as e:
-            st.error(f"Initialization error: {e}")
-            st.stop()
+        self.config = Config()
+        self.ollama = OllamaClient()
+        self.openai_client = OpenAIClient(api_key=self.config.openai_api_key)
+        self.memory = MemoryManager()
+        self.pdf_processor = PDFProcessor()
+        self.vector_db = VectorDB()
+        self.mcp_client = MCPClient()
+        self.init_session_state()
 
     def init_session_state(self):
         """Initialize session state with defaults"""
         if 'messages' not in st.session_state:
-            # Attempt to restore last conversation
-            last = self.memory.load_last_conversation()
-            st.session_state.messages = last if last else []
+            st.session_state.messages = []
+        if 'provider' not in st.session_state:
+            st.session_state.provider = "Local (Ollama)"
         if 'current_model' not in st.session_state:
             st.session_state.current_model = "llama2"
+        if 'openai_model' not in st.session_state:
+            st.session_state.openai_model = "gpt-3.5-turbo"
+        if 'openai_api_key' not in st.session_state:
+            st.session_state.openai_api_key = self.config.openai_api_key or ""
         if 'current_agent' not in st.session_state:
             st.session_state.current_agent = "General Chat"
         if 'use_rag' not in st.session_state:
-            st.session_state.use_rag = False
-
-    def setup_sidebar(self):
-        """Setup sidebar with controls and error handling"""
         with st.sidebar:
             st.title("🤖 AI Playground Controls")
 
-            # Model selection with error handling
-            st.subheader("Model Settings")
-            try:
-                available_models = self.ollama.get_available_models()
-                if not available_models:
-                    available_models = ["llama2", "mistral"]  # Fallback
-                    st.warning("No models detected. Using defaults.")
-            except Exception as e:
-                st.error(f"Error loading models: {e}")
-                available_models = ["llama2", "mistral"]  # Fallback
+            # Provider selection
+            st.subheader("Provider")
+            provider = st.radio(
+                "Choose Provider:",
+                ["Local (Ollama)", "OpenAI"],
+                index=0 if st.session_state.provider == "Local (Ollama)" else 1,
+            )
+            if provider != st.session_state.provider:
+                st.session_state.provider = provider
+                st.rerun()
 
+            # Model selection
+            st.subheader("Model Settings")
+            if st.session_state.provider == "Local (Ollama)":
+                available_models = self.ollama.get_available_models()
+                selected_model = st.selectbox(
+                    "Choose Local Model:",
+                    available_models,
+                    index=available_models.index(st.session_state.current_model) if st.session_state.current_model in available_models else 0
+                )
+                if selected_model != st.session_state.current_model:
+                    st.session_state.current_model = selected_model
+                    st.rerun()
+            else:
+                openai_models = [
+                    "gpt-4o-mini",
+                    "gpt-4o",
+                    "gpt-3.5-turbo"
+                ]
+                selected_openai_model = st.selectbox(
+                    "Choose OpenAI Model:",
+                    openai_models,
+                    index=openai_models.index(st.session_state.openai_model) if st.session_state.openai_model in openai_models else 0
+                )
+                if selected_openai_model != st.session_state.openai_model:
+                    st.session_state.openai_model = selected_openai_model
+                    st.rerun()
+
+                # API Key input (not persisted to disk)
+                st.caption("Enter your OpenAI API key (kept in session only)")
+                api_key_input = st.text_input("OPENAI_API_KEY", value=st.session_state.openai_api_key, type="password")
+                if api_key_input != st.session_state.openai_api_key:
+                    st.session_state.openai_api_key = api_key_input
+
+            # Agent selection
+            st.subheader("Agent Settings")
             selected_model = st.selectbox(
                 "Choose AI Model:",
                 available_models,
@@ -92,6 +132,19 @@ class AIPlaygroundApp:
                 st.session_state.current_agent = selected_agent
                 st.session_state.use_rag = use_rag
                 st.rerun()
+
+            
+            # Export conversation
+            st.subheader("Export")
+            if st.session_state.messages:
+                export_data = json.dumps({"messages": st.session_state.messages}, indent=2).encode("utf-8")
+                st.download_button(
+                    label="Download Conversation JSON",
+                    data=export_data,
+                    file_name="conversation.json",
+                    mime="application/json"
+                )
+
 
             # Theme selection
             st.subheader("UI Settings")
@@ -122,19 +175,14 @@ class AIPlaygroundApp:
                             st.warning("No content extracted from the document.")
                     except Exception as e:
                         st.error(f"Document processing error: {e}")
-
             # System info
             st.subheader("System Info")
-            st.write(f"Current Model: {st.session_state.current_model}")
+            st.write(f"Provider: {st.session_state.provider}")
+            if st.session_state.provider == "Local (Ollama)":
+                st.write(f"Current Model: {st.session_state.current_model}")
+            else:
+                st.write(f"OpenAI Model: {st.session_state.openai_model}")
             st.write(f"Messages: {len(st.session_state.messages)}")
-
-            # MCP Status with error handling
-            st.subheader("MCP Status")
-            try:
-                mcp_status = self.mcp_client.get_status()
-                st.write(f"Klavis MCP: {mcp_status}")
-            except Exception as e:
-                st.error(f"MCP Status error: {str(e)}")
 
     def display_chat(self):
         """Display chat interface with error handling"""
@@ -163,14 +211,43 @@ class AIPlaygroundApp:
                 except Exception as e:
                     st.warning(f"RAG retrieval error: {e}")
 
+
             augmented = self._build_augmented_prompt(prompt, system_prompt, rag_context)
 
-            # Generate response
-            try:
-                model = st.session_state.current_model
-                reply = self.ollama.generate_response(augmented, st.session_state.messages, model)
-            except Exception as e:
-                reply = f"There was an error generating a response: {e}"
+            # Generate response and display
+            with st.chat_message("assistant"):
+                if st.session_state.provider == "Local (Ollama)":
+                    try:
+                        with st.spinner("Thinking..."):
+                            response = self.ollama.generate_response(
+                                augmented,
+                                st.session_state.messages[:-1],
+                                st.session_state.current_model
+                            )
+                    except Exception as e:
+                        response = f"There was an error generating a response: {e}"
+                    st.markdown(response)
+                else:
+                    if not st.session_state.openai_api_key:
+                        st.warning("Please provide an OPENAI_API_KEY in the sidebar.")
+                        response = ""
+                    else:
+                        message_placeholder = st.empty()
+                        full_response = ""
+                        for chunk in self.openai_client.stream_chat_completion(
+                            model=st.session_state.openai_model,
+                            messages=st.session_state.messages,
+                            api_key_override=st.session_state.openai_api_key,
+                        ):
+                            full_response += chunk
+                            message_placeholder.markdown(full_response + "|")
+                        message_placeholder.markdown(full_response)
+                        response = full_response
+
+            # Add assistant message
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+            # Persist conversation
 
             # Add assistant message
             st.session_state.messages.append({"role": "assistant", "content": reply})
