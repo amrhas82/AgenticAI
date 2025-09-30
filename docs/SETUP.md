@@ -34,6 +34,29 @@ chmod +x setup-win.sh && ./setup-win.sh
 ```
 Alternatively, inside Ubuntu WSL you may use `./setup.sh`.
 
+### If `docker` is not recognized in CMD/PowerShell
+
+- Ensure Docker Desktop is installed and running.
+- Close and reopen CMD/PowerShell after install. Docker adds its CLI to PATH.
+- Verify the CLI with either of the following:
+
+```cmd
+"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" --version
+```
+
+```powershell
+& "C:\Program Files\Docker\Docker\resources\bin\docker.exe" --version
+```
+
+- If that works but `docker` still isn’t found, add the directory above to PATH and restart the terminal, or run Docker Desktop installer again to repair PATH.
+
+Once `docker` works in CMD/PowerShell, you can run:
+
+```powershell
+docker compose ps
+docker compose logs --tail 200
+```
+
 ## Manual setup (any distro/Windows with Docker Desktop)
 1) Install Docker + Compose for your OS
 2) Optionally install Ollama on the host if you want local models
