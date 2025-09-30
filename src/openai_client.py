@@ -63,4 +63,3 @@ class OpenAIClient:
             messages=normalized,
         )
         return response.choices[0].message.content or ""
-
