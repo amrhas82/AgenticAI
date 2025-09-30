@@ -12,28 +12,28 @@ record_ok() { SUMMARY+=$'\n'"✅ $1"; }
 record_warn() { SUMMARY+=$'\n'"⚠️  $1"; }
 record_fail() { SUMMARY+=$'\n'"❌ $1"; FAIL_COUNT=$((FAIL_COUNT+1)); }
 
-begin_step() { CURRENT_STEP="$1"; echo "\n— $1 —"; }
+begin_step() { CURRENT_STEP="$1"; printf "\n— %s —\n" "$1"; }
 
 print_summary() {
-  echo "\n=============================="
-  echo "Setup summary"
-  echo "=============================="
-  echo "$SUMMARY"
+  printf "\n==============================\n"
+  printf "Setup summary\n"
+  printf "==============================\n"
+  printf "%s\n" "$SUMMARY"
   if (( FAIL_COUNT > 0 )); then
-    echo "\nSome issues were detected (failures: $FAIL_COUNT)."
+    printf "\nSome issues were detected (failures: %s).\n" "$FAIL_COUNT"
     if [[ -n "${COMPOSE_CMD:-}" ]]; then
-      echo "View logs: ${COMPOSE_CMD} logs --tail=200 | cat"
+      printf "View logs: %s logs --tail=200 | cat\n" "$COMPOSE_CMD"
     fi
     exit 1
   else
-    echo "\n✅ Setup complete!"
-    echo "🌐 Streamlit app: http://localhost:8501"
-    echo "🗄️  PostgreSQL (in Docker): localhost:5432"
+    printf "\n✅ Setup complete!\n"
+    printf "🌐 Streamlit app: http://localhost:8501\n"
+    printf "🗄️  PostgreSQL (in Docker): localhost:5432\n"
     if [[ -n "${COMPOSE_CMD:-}" ]]; then
-      echo "\n📋 Useful commands:"
-      echo "   View logs: ${COMPOSE_CMD} logs -f streamlit-app | cat"
-      echo "   Stop services: ${COMPOSE_CMD} down"
-      echo "   Restart: ${COMPOSE_CMD} restart"
+      printf "\n📋 Useful commands:\n"
+      printf "   View logs: %s logs -f streamlit-app | cat\n" "$COMPOSE_CMD"
+      printf "   Stop services: %s down\n" "$COMPOSE_CMD"
+      printf "   Restart: %s restart\n" "$COMPOSE_CMD"
     fi
   fi
 }
@@ -91,28 +91,33 @@ else
 fi
 
 begin_step "Compose: build and start"
-if ${COMPOSE_CMD} down; then
-  record_ok "Compose: stopped any running services"
+# Guard against unset COMPOSE_CMD when Compose is missing
+if [[ -z "${COMPOSE_CMD:-}" ]]; then
+  record_fail "Docker Compose not available; skipping build/start"
 else
-  record_warn "Compose down encountered issues"
-fi
+  if ${COMPOSE_CMD} down; then
+    record_ok "Compose: stopped any running services"
+  else
+    record_warn "Compose down encountered issues"
+  fi
 
-if ${COMPOSE_CMD} build --no-cache; then
-  record_ok "Compose: images built"
-else
-  record_fail "Compose build failed"
-fi
+  if ${COMPOSE_CMD} build --no-cache; then
+    record_ok "Compose: images built"
+  else
+    record_fail "Compose build failed"
+  fi
 
-if ${COMPOSE_CMD} up -d; then
-  record_ok "Compose: services started"
-else
-  record_fail "Compose up failed"
+  if ${COMPOSE_CMD} up -d; then
+    record_ok "Compose: services started"
+  else
+    record_fail "Compose up failed"
+  fi
 fi
 
 begin_step "Health checks"
-# Basic HTTP wait for Streamlit
+# Basic HTTP wait for Streamlit (shorter timeout on Windows/WSL)
 wait_for_http() {
-  local url="$1"; local timeout="${2:-90}"; local i=0
+  local url="$1"; local timeout="${2:-60}"; local i=0
   while (( i < timeout )); do
     if curl -fsS "$url" >/dev/null 2>&1; then return 0; fi
     sleep 1; i=$((i+1))
@@ -120,9 +125,13 @@ wait_for_http() {
   return 1
 }
 
-if wait_for_http "http://localhost:8501/_stcore/health" 90; then
+if wait_for_http "http://localhost:8501/_stcore/health" 60; then
   record_ok "Streamlit health endpoint responded"
 else
   record_fail "Streamlit did not respond on http://localhost:8501"
+  # Print recent logs to aid debugging
+  if [[ -n "${COMPOSE_CMD:-}" ]]; then
+    ${COMPOSE_CMD} logs --tail=200 | cat || true
+  fi
 fi
 

@@ -34,6 +34,29 @@ chmod +x setup-win.sh && ./setup-win.sh
 ```
 Alternatively, inside Ubuntu WSL you may use `./setup.sh`.
 
+### If `docker` is not recognized in CMD/PowerShell
+
+- Ensure Docker Desktop is installed and running.
+- Close and reopen CMD/PowerShell after install. Docker adds its CLI to PATH.
+- Verify the CLI with either of the following:
+
+```cmd
+"C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" --version
+```
+
+```powershell
+& "C:\Program Files\Docker\Docker\resources\bin\docker.exe" --version
+```
+
+- If that works but `docker` still isn’t found, add the directory above to PATH and restart the terminal, or run Docker Desktop installer again to repair PATH.
+
+Once `docker` works in CMD/PowerShell, you can run:
+
+```powershell
+docker compose ps
+docker compose logs --tail 200
+```
+
 ## Manual setup (any distro/Windows with Docker Desktop)
 1) Install Docker + Compose for your OS
 2) Optionally install Ollama on the host if you want local models
@@ -42,6 +65,89 @@ Alternatively, inside Ubuntu WSL you may use `./setup.sh`.
 docker compose up -d
 ```
 Open http://localhost:8501
+
+### Manual Docker install (Ubuntu 24.04+/25.04)
+
+If Docker/Compose are not yet installed on Ubuntu, use the following commands. These work well on 24.04 and 25.04 and set up the daemon and group permissions.
+
+```bash
+# 1) Prerequisites (rootless-capable as well)
+sudo apt-get update -y
+sudo apt-get install -y uidmap slirp4netns fuse-overlayfs dbus-user-session \
+  curl ca-certificates gnupg lsb-release
+
+# 2) Install Docker (Engine + CLI + Compose plugin)
+curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+sudo sh /tmp/get-docker.sh
+
+# 3) Run docker without sudo (new group membership)
+sudo usermod -aG docker "$USER"
+newgrp docker
+
+# 4) Start and enable the daemon
+sudo systemctl enable --now docker
+
+# 5) Verify connectivity
+docker version && docker info
+```
+
+### Optional: Rootless Docker
+
+If you prefer to run Docker without root privileges, set up rootless mode. Ensure the prerequisites above are installed first.
+
+```bash
+# Install user-level daemon and socket
+dockerd-rootless-setuptool.sh install
+
+# Start on login and start now
+systemctl --user enable --now docker
+
+# Point the client to the user socket for this shell
+export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
+
+# Verify
+docker info
+```
+
+### Bring the stack up with Compose
+
+From the repository root:
+
+```bash
+# Clean up old state (ignore errors if first run)
+docker compose down -v --remove-orphans || true
+
+# Build and start
+docker compose build --pull
+docker compose up -d
+
+# Status and recent logs
+docker compose ps
+docker compose logs --tail=200 | cat
+```
+
+### Health checks
+
+```bash
+# Postgres inside container (service name is `postgres`)
+docker compose exec -T postgres pg_isready -U postgres || true
+
+# From host (set PGPASSWORD if required; adjust user/db as needed)
+# PGPASSWORD=ai_password psql -h localhost -p 5432 -U ai_user -d ai_playground -c '\l' || true
+
+# Streamlit
+curl -fsS http://localhost:8501/ | head -n1 || true
+```
+
+### Database/vector initialization
+
+- The file `scripts/init_db.sql` is mounted and executed automatically by the Postgres container on first run.
+- If you add custom initialization or seeding scripts, run them via a one-off container, for example:
+
+```bash
+# Example pattern (adjust the command to your project)
+docker compose run --rm streamlit-app bash -lc 'python scripts/your_init_script.py'
+```
 
 ## Troubleshooting
 - Permission denied with Docker: add user to group and start a new shell
