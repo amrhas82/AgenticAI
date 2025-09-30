@@ -40,12 +40,14 @@ Thumbs.db
 /data/memory/*
 !/data/memory/.gitkeep
 /data/vector_store.json
-/data/documents/*.tmp
+/data/documents/*
+!/data/documents/.gitkeep
 *.cache
 
 # Local env/config
 .env
 .env.*
+!.env.example
 
 # Build artifacts
 build/
