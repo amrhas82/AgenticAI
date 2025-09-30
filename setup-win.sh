@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -Euo pipefail
+set +H  # Disable history expansion to avoid 'event not found' on some Windows/WSL shells
 
 echo "🚀 Setting up AI Agent Playground (Windows/WSL) ..."
 

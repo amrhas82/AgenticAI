@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -Euo pipefail
+set +H  # Disable history expansion to avoid 'event not found' on shells with histexpand
 
 echo "🚀 Setting up AI Agent Playground..."
 
