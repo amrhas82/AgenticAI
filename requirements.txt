@@ -1,12 +1,10 @@
-streamlit==1.28.0
+streamlit>=1.40.0,<2
 ollama==0.1.7
-psycopg2-binary==2.9.7
-# Align core with community (community 0.0.10 requires core >=0.1.8,<0.2)
-langchain-community==0.0.10
-langchain-core>=0.1.8,<0.2
-langchain-text-splitters==0.0.1
+# Install psycopg2-binary only where prebuilt wheels exist (e.g., Python < 3.13)
+psycopg2-binary==2.9.7; python_version < "3.13"
 pypdf2==3.0.1
 python-dotenv==1.0.0
 requests==2.31.0
-numpy==1.24.3
+# Numpy 2.1+ provides wheels for Python 3.13
+numpy>=2.1.0,<3
 openai>=1.0.0

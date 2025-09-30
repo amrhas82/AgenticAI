@@ -16,15 +16,10 @@ from typing import Optional
 # Load environment variables
 load_dotenv()
 
-# Import local modules
+# Validate local modules availability (already imported above)
 try:
-    from ollama_client import OllamaClient
-    from memory_manager import MemoryManager
-    from pdf_processor import PDFProcessor
-    from vector_db import VectorDB
-    from mcp_client import MCPClient
-    from utils.config import Config
-except ImportError as e:
+    _ = (OllamaClient, MemoryManager, PDFProcessor, VectorDB, MCPClient, Config)
+except Exception as e:
     st.error(f"Module import error: {e}. Please check your installation.")
     st.stop()
 
