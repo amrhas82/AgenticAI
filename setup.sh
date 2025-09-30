@@ -225,31 +225,94 @@ ensure_docker() {
         unset DOCKER_HOST
     fi
 
-    # Ensure daemon is running
+    # Ensure daemon is running (system docker first)
     if ! docker info >/dev/null 2>&1; then
         printf "🔁 Starting Docker daemon...\n"
         require_sudo || true
-        sudo systemctl start docker || true
-        sleep 2
+        # Try systemd first, then service
+        if command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl start docker || true
+        else
+            sudo service docker start || true
+        fi
+        sleep 3
     fi
 
-    # Fallback to rootless docker if systemd isn't available or daemon still down
+    # Fallback to rootless docker if system daemon still down
     if ! docker info >/dev/null 2>&1; then
         printf "🪄 Trying rootless Docker fallback...\n"
         if have_cmd dockerd-rootless-setuptool.sh; then
             export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
             mkdir -p "$XDG_RUNTIME_DIR"
-            dockerd-rootless-setuptool.sh install -f || true
-            nohup dockerd-rootless.sh >/tmp/dockerd-rootless.log 2>&1 &
-            export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-            # If using rootless, never prefix with sudo
-            DOCKER_PREFIX=""
-            sleep 3
+            # Check and attempt to install missing prerequisites for rootless
+            local need_prereqs=0
+            if ! command -v newuidmap >/dev/null 2>&1 || ! command -v newgidmap >/dev/null 2>&1; then need_prereqs=1; fi
+            if ! command -v slirp4netns >/dev/null 2>&1; then need_prereqs=1; fi
+            if ! command -v fuse-overlayfs >/dev/null 2>&1; then need_prereqs=1; fi
+            if (( need_prereqs == 1 )); then
+                printf "🔧 Installing rootless Docker prerequisites...\n"
+                case "$(detect_package_manager)" in
+                    apt)
+                        apt_install uidmap dbus-user-session slirp4netns fuse-overlayfs || true
+                        ;;
+                    dnf)
+                        sudo dnf install -y uidmap slirp4netns fuse-overlayfs dbus-daemon || true
+                        ;;
+                    yum)
+                        sudo yum install -y uidmap slirp4netns fuse-overlayfs dbus-daemon || true
+                        ;;
+                    zypper)
+                        sudo zypper --non-interactive install shadow uidmap slirp4netns fuse-overlayfs dbus-1 || true
+                        ;;
+                    pacman)
+                        sudo pacman -Sy --noconfirm uidmap slirp4netns fuse-overlayfs dbus || true
+                        ;;
+                    apk)
+                        sudo apk add --no-cache shadow-uidmap slirp4netns fuse-overlayfs dbus || true
+                        ;;
+                    *) ;;
+                esac
+            fi
+            # Run setup tool and start rootless daemon
+            if dockerd-rootless-setuptool.sh check >/tmp/dockerd-rootless-check.log 2>&1; then
+                dockerd-rootless-setuptool.sh install -f >/tmp/dockerd-rootless-install.log 2>&1 || true
+                nohup dockerd-rootless.sh >/tmp/dockerd-rootless.log 2>&1 &
+                export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+                DOCKER_PREFIX=""
+                # Wait up to 10s for rootless socket
+                for i in $(seq 1 10); do
+                    if docker info >/dev/null 2>&1; then break; fi
+                    sleep 1
+                done
+                if ! docker info >/dev/null 2>&1; then
+                    printf "❌ Rootless Docker did not start correctly. See /tmp/dockerd-rootless.log\n"
+                    # Do not leave an invalid DOCKER_HOST set
+                    unset DOCKER_HOST
+                fi
+            else
+                printf "[ERROR] Rootless Docker prerequisites missing.\n"
+                printf "[ERROR] Install recommended packages and re-run.\n"
+                printf "########## BEGIN ##########\n"
+                printf "sudo sh -eux <<EOF\napt-get update -y\napt-get install -y uidmap dbus-user-session slirp4netns fuse-overlayfs\nEOF\n"
+                printf "########## END ##########\n"
+            fi
         fi
     fi
 
-    # Final verification
+    # Final verification with diagnostics on failure
     if ! docker info >/dev/null 2>&1; then
+        echo "❌ Docker daemon still not reachable. Collecting diagnostics..."
+        echo "— Sockets —"
+        ls -l /var/run/docker.sock 2>/dev/null || true
+        if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then ls -l "$XDG_RUNTIME_DIR/docker.sock" 2>/dev/null || true; fi
+        echo "— docker info (error) —"
+        docker info 2>&1 | sed 's/^/   /' | tail -n +1
+        if command -v journalctl >/dev/null 2>&1; then
+            echo "— journalctl -u docker (last 200) —"
+            sudo journalctl -u docker -n 200 --no-pager | sed 's/^/   /' | tail -n +1 || true
+        fi
+        echo "— rootless log —"
+        tail -n 200 /tmp/dockerd-rootless.log 2>/dev/null | sed 's/^/   /' || true
         return 1
     fi
 }
@@ -302,6 +365,10 @@ fi
 # Ensure daemon is actually reachable before continuing (gate compose)
 if ! ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
     record_fail "Docker daemon not reachable"
+    echo "ℹ️  Diagnostic: listing sockets and DOCKER_HOST"
+    echo "   DOCKER_HOST=${DOCKER_HOST:-<unset>}"
+    ls -l /var/run/docker.sock 2>/dev/null | sed 's/^/   /' || true
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then ls -l "$XDG_RUNTIME_DIR/docker.sock" 2>/dev/null | sed 's/^/   /' || true; fi
 fi
 
 # If docker socket is present but current user lacks permission, retry via sudo
@@ -388,12 +455,16 @@ if run_compose build --no-cache; then
     record_ok "Compose: images built"
 else
     record_fail "Compose build failed"
+    echo "ℹ️  Tip: re-run with COMPOSE_BAKE=true for faster builds, or --no-cache off"
 fi
 
 if run_compose up -d; then
     record_ok "Compose: services started"
 else
     record_fail "Compose up failed"
+    echo "ℹ️  Compose inspect and logs follow:"
+    ${COMPOSE_CMD} ps | cat || true
+    ${COMPOSE_CMD} logs --tail=200 | cat || true
 fi
 
 begin_step "Health checks"
