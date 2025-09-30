@@ -75,6 +75,23 @@ handle_err() {
 trap 'handle_err "$LINENO" "$BASH_COMMAND"' ERR
 trap 'print_summary' EXIT
 
+# Clear obviously stale/broken DOCKER_HOST early
+if [[ -n "${DOCKER_HOST:-}" ]]; then
+    if ! docker info >/dev/null 2>&1; then
+        # If points to a non-existent user socket, drop it
+        if [[ "$DOCKER_HOST" == unix://*/docker.sock ]]; then
+            sock_path="${DOCKER_HOST#unix://}"
+            if [[ ! -S "$sock_path" ]]; then
+                printf "⚠️  Clearing stale DOCKER_HOST=%s (socket missing)\n" "$DOCKER_HOST"
+                unset DOCKER_HOST
+            fi
+        else
+            printf "⚠️  Clearing unreachable DOCKER_HOST=%s\n" "$DOCKER_HOST"
+            unset DOCKER_HOST
+        fi
+    fi
+fi
+
 wait_for_http() {
     # wait_for_http URL TIMEOUT_SECS
     local url="$1"
@@ -225,31 +242,109 @@ ensure_docker() {
         unset DOCKER_HOST
     fi
 
-    # Ensure daemon is running
+    # Ensure daemon is running (system docker first)
     if ! docker info >/dev/null 2>&1; then
         printf "🔁 Starting Docker daemon...\n"
         require_sudo || true
-        sudo systemctl start docker || true
-        sleep 2
+        # Try systemd first, then service
+        if command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl start docker || true
+        else
+            sudo service docker start || true
+        fi
+        sleep 3
     fi
 
-    # Fallback to rootless docker if systemd isn't available or daemon still down
+    # If non-root cannot access, try with sudo (prefer system docker over rootless)
+    if ! docker info >/dev/null 2>&1; then
+        if sudo docker info >/dev/null 2>&1; then
+            DOCKER_PREFIX="sudo "
+        fi
+    fi
+
+    # Fallback to rootless docker if system daemon still down
     if ! docker info >/dev/null 2>&1; then
         printf "🪄 Trying rootless Docker fallback...\n"
         if have_cmd dockerd-rootless-setuptool.sh; then
             export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
             mkdir -p "$XDG_RUNTIME_DIR"
-            dockerd-rootless-setuptool.sh install -f || true
-            nohup dockerd-rootless.sh >/tmp/dockerd-rootless.log 2>&1 &
-            export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-            # If using rootless, never prefix with sudo
-            DOCKER_PREFIX=""
-            sleep 3
+            # Check and attempt to install missing prerequisites for rootless
+            local need_prereqs=0
+            if ! command -v newuidmap >/dev/null 2>&1 || ! command -v newgidmap >/dev/null 2>&1; then need_prereqs=1; fi
+            if ! command -v slirp4netns >/dev/null 2>&1; then need_prereqs=1; fi
+            if ! command -v fuse-overlayfs >/dev/null 2>&1; then need_prereqs=1; fi
+            if (( need_prereqs == 1 )); then
+                printf "🔧 Installing rootless Docker prerequisites...\n"
+                case "$(detect_package_manager)" in
+                    apt)
+                        # Ensure 'universe' repo (Ubuntu/Zorin) for slirp4netns/fuse-overlayfs
+                        if command -v add-apt-repository >/dev/null 2>&1; then
+                            sudo add-apt-repository -y universe || true
+                        else
+                            sudo apt-get install -y software-properties-common || true
+                            sudo add-apt-repository -y universe || true
+                        fi
+                        sudo apt-get update -y || true
+                        apt_install uidmap dbus-user-session slirp4netns fuse-overlayfs || true
+                        ;;
+                    dnf)
+                        sudo dnf install -y uidmap slirp4netns fuse-overlayfs dbus-daemon || true
+                        ;;
+                    yum)
+                        sudo yum install -y uidmap slirp4netns fuse-overlayfs dbus-daemon || true
+                        ;;
+                    zypper)
+                        sudo zypper --non-interactive install shadow uidmap slirp4netns fuse-overlayfs dbus-1 || true
+                        ;;
+                    pacman)
+                        sudo pacman -Sy --noconfirm uidmap slirp4netns fuse-overlayfs dbus || true
+                        ;;
+                    apk)
+                        sudo apk add --no-cache shadow-uidmap slirp4netns fuse-overlayfs dbus || true
+                        ;;
+                    *) ;;
+                esac
+            fi
+            # Run setup tool and start rootless daemon
+            if dockerd-rootless-setuptool.sh check >/tmp/dockerd-rootless-check.log 2>&1; then
+                dockerd-rootless-setuptool.sh install -f >/tmp/dockerd-rootless-install.log 2>&1 || true
+                nohup dockerd-rootless.sh >/tmp/dockerd-rootless.log 2>&1 &
+                export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+                DOCKER_PREFIX=""
+                # Wait up to 10s for rootless socket
+                for i in $(seq 1 10); do
+                    if docker info >/dev/null 2>&1; then break; fi
+                    sleep 1
+                done
+                if ! docker info >/dev/null 2>&1; then
+                    printf "❌ Rootless Docker did not start correctly. See /tmp/dockerd-rootless.log\n"
+                    # Do not leave an invalid DOCKER_HOST set
+                    unset DOCKER_HOST
+                fi
+            else
+                printf "[ERROR] Rootless Docker prerequisites missing.\n"
+                printf "[ERROR] Install recommended packages and re-run.\n"
+                printf "########## BEGIN ##########\n"
+                printf "sudo sh -eux <<EOF\napt-get update -y\napt-get install -y software-properties-common\nadd-apt-repository -y universe\napt-get update -y\napt-get install -y uidmap dbus-user-session slirp4netns fuse-overlayfs\nEOF\n"
+                printf "########## END ##########\n"
+            fi
         fi
     fi
 
-    # Final verification
+    # Final verification with diagnostics on failure
     if ! docker info >/dev/null 2>&1; then
+        echo "❌ Docker daemon still not reachable. Collecting diagnostics..."
+        echo "— Sockets —"
+        ls -l /var/run/docker.sock 2>/dev/null || true
+        if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then ls -l "$XDG_RUNTIME_DIR/docker.sock" 2>/dev/null || true; fi
+        echo "— docker info (error) —"
+        docker info 2>&1 | sed 's/^/   /' | tail -n +1
+        if command -v journalctl >/dev/null 2>&1; then
+            echo "— journalctl -u docker (last 200) —"
+            sudo journalctl -u docker -n 200 --no-pager | sed 's/^/   /' | tail -n +1 || true
+        fi
+        echo "— rootless log —"
+        tail -n 200 /tmp/dockerd-rootless.log 2>/dev/null | sed 's/^/   /' || true
         return 1
     fi
 }
@@ -302,6 +397,10 @@ fi
 # Ensure daemon is actually reachable before continuing (gate compose)
 if ! ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
     record_fail "Docker daemon not reachable"
+    echo "ℹ️  Diagnostic: listing sockets and DOCKER_HOST"
+    echo "   DOCKER_HOST=${DOCKER_HOST:-<unset>}"
+    ls -l /var/run/docker.sock 2>/dev/null | sed 's/^/   /' || true
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then ls -l "$XDG_RUNTIME_DIR/docker.sock" 2>/dev/null | sed 's/^/   /' || true; fi
 fi
 
 # If docker socket is present but current user lacks permission, retry via sudo
@@ -354,13 +453,25 @@ fi
 
 # Optional prune of unused images/networks to avoid conflicts
 if [[ "${PRUNE_DOCKER:-0}" == "1" ]]; then
-    printf "🧹 Pruning unused Docker data...\n"
-    ${DOCKER_PREFIX}docker system prune -af --volumes | cat
+    if ${DOCKER_PREFIX}docker info >/dev/null 2>&1; then
+        printf "🧹 Pruning unused Docker data...\n"
+        ${DOCKER_PREFIX}docker system prune -af --volumes | cat || true
+    else
+        printf "⚠️  Skipping prune: Docker daemon not reachable.\n"
+    fi
 fi
 
 # Wrapper to run compose and retry with sudo on permission errors
 run_compose() {
     local output
+    # If DOCKER_HOST points to non-existent rootless socket, temporarily unset for this call
+    local saved_docker_host="${DOCKER_HOST:-}"
+    if [[ -n "${DOCKER_HOST:-}" && "$DOCKER_HOST" == unix://*/docker.sock ]]; then
+        local sock_path="${DOCKER_HOST#unix://}"
+        if [[ ! -S "$sock_path" ]]; then
+            unset DOCKER_HOST
+        fi
+    fi
     if ! output=$(${COMPOSE_CMD} "$@" 2>&1); then
         echo "$output"
         if echo "$output" | grep -qi 'permission denied'; then
@@ -372,10 +483,23 @@ run_compose() {
                 COMPOSE_CMD="${DOCKER_PREFIX}docker compose"
             fi
             ${COMPOSE_CMD} "$@" | cat
+        elif echo "$output" | grep -qi 'Cannot connect to the Docker daemon' && [[ -z "${DOCKER_PREFIX:-}" ]]; then
+            record_warn "Compose '$*' cannot reach daemon; retrying with sudo"
+            DOCKER_PREFIX="sudo "
+            if command -v docker-compose >/dev/null 2>&1; then
+                COMPOSE_CMD="${DOCKER_PREFIX}docker-compose"
+            else
+                COMPOSE_CMD="${DOCKER_PREFIX}docker compose"
+            fi
+            ${COMPOSE_CMD} "$@" | cat
         else
+            # restore DOCKER_HOST and bubble up error
+            if [[ -n "$saved_docker_host" ]]; then export DOCKER_HOST="$saved_docker_host"; fi
             return 1
         fi
     fi
+    # restore DOCKER_HOST after success
+    if [[ -n "$saved_docker_host" ]]; then export DOCKER_HOST="$saved_docker_host"; fi
 }
 
 if run_compose down; then
@@ -388,12 +512,16 @@ if run_compose build --no-cache; then
     record_ok "Compose: images built"
 else
     record_fail "Compose build failed"
+    echo "ℹ️  Tip: re-run with COMPOSE_BAKE=true for faster builds, or --no-cache off"
 fi
 
 if run_compose up -d; then
     record_ok "Compose: services started"
 else
     record_fail "Compose up failed"
+    echo "ℹ️  Compose inspect and logs follow:"
+    ${COMPOSE_CMD} ps | cat || true
+    ${COMPOSE_CMD} logs --tail=200 | cat || true
 fi
 
 begin_step "Health checks"
