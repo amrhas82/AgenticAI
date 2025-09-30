@@ -14,4 +14,3 @@ class Config:
         if not self.database_url:
             raise ValueError("DATABASE_URL environment variable is required")
         return True
-        
