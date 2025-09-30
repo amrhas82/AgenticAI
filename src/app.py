@@ -63,6 +63,10 @@ class AIPlaygroundApp:
         if 'current_agent' not in st.session_state:
             st.session_state.current_agent = "General Chat"
         if 'use_rag' not in st.session_state:
+            st.session_state.use_rag = False
+
+    def setup_sidebar(self):
+        """Setup sidebar with controls and error handling"""
         with st.sidebar:
             st.title("🤖 AI Playground Controls")
 
@@ -112,19 +116,6 @@ class AIPlaygroundApp:
 
             # Agent selection
             st.subheader("Agent Settings")
-            selected_model = st.selectbox(
-                "Choose AI Model:",
-                available_models,
-                index=available_models.index(
-                    st.session_state.current_model) if st.session_state.current_model in available_models else 0
-            )
-
-            if selected_model != st.session_state.current_model:
-                st.session_state.current_model = selected_model
-                st.rerun()
-
-            # Agent selection
-            st.subheader("Agent Settings")
             agents = ["General Chat", "RAG Assistant", "Coder (DeepSeek style)"]
             selected_agent = st.selectbox("Choose Agent:", agents, index=agents.index(st.session_state.current_agent) if st.session_state.current_agent in agents else 0)
             use_rag = st.toggle("Enable RAG context", value=st.session_state.use_rag)
@@ -132,19 +123,6 @@ class AIPlaygroundApp:
                 st.session_state.current_agent = selected_agent
                 st.session_state.use_rag = use_rag
                 st.rerun()
-
-            
-            # Export conversation
-            st.subheader("Export")
-            if st.session_state.messages:
-                export_data = json.dumps({"messages": st.session_state.messages}, indent=2).encode("utf-8")
-                st.download_button(
-                    label="Download Conversation JSON",
-                    data=export_data,
-                    file_name="conversation.json",
-                    mime="application/json"
-                )
-
 
             # Theme selection
             st.subheader("UI Settings")
@@ -175,6 +153,18 @@ class AIPlaygroundApp:
                             st.warning("No content extracted from the document.")
                     except Exception as e:
                         st.error(f"Document processing error: {e}")
+
+            # Export conversation
+            st.subheader("Export")
+            if st.session_state.messages:
+                export_data = json.dumps({"messages": st.session_state.messages}, indent=2).encode("utf-8")
+                st.download_button(
+                    label="Download Conversation JSON",
+                    data=export_data,
+                    file_name="conversation.json",
+                    mime="application/json"
+                )
+
             # System info
             st.subheader("System Info")
             st.write(f"Provider: {st.session_state.provider}")
@@ -183,6 +173,14 @@ class AIPlaygroundApp:
             else:
                 st.write(f"OpenAI Model: {st.session_state.openai_model}")
             st.write(f"Messages: {len(st.session_state.messages)}")
+
+            # MCP Status with error handling
+            st.subheader("MCP Status")
+            try:
+                mcp_status = self.mcp_client.get_status()
+                st.write(f"Klavis MCP: {mcp_status}")
+            except Exception as e:
+                st.error(f"MCP Status error: {str(e)}")
 
     def display_chat(self):
         """Display chat interface with error handling"""
@@ -210,7 +208,6 @@ class AIPlaygroundApp:
                     rag_context = "\n\n".join(hits) if hits else None
                 except Exception as e:
                     st.warning(f"RAG retrieval error: {e}")
-
 
             augmented = self._build_augmented_prompt(prompt, system_prompt, rag_context)
 
@@ -246,13 +243,6 @@ class AIPlaygroundApp:
 
             # Add assistant message
             st.session_state.messages.append({"role": "assistant", "content": response})
-
-            # Persist conversation
-
-            # Add assistant message
-            st.session_state.messages.append({"role": "assistant", "content": reply})
-            with st.chat_message("assistant"):
-                st.markdown(reply)
 
             # Persist conversation
             try:
