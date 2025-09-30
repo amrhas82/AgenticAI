@@ -51,6 +51,10 @@ newgrp docker
 - View logs: `docker compose logs -f | cat`
 - Streamlit-only logs: `docker compose logs -f streamlit-app | cat`
 
+### Windows/WSL without admin (Docker unavailable)
+- If you cannot install or enable Docker Desktop/WSL integration, follow the diagnostics in the Setup Guide section "Windows/WSL without admin (Docker unavailable)". This includes tracing `setup-win.sh`, showing detailed compose build progress, checking service logs, and probing the Streamlit health endpoint.
+- See: [Setup Guide → Windows/WSL without admin](docs/SETUP.md#windowswsl-without-admin-docker-unavailable)
+
 ### Cleanup before rebuilds
 - To prune unused images/networks/volumes before a rebuild, run:
 ```bash

@@ -34,6 +34,70 @@ chmod +x setup-win.sh && ./setup-win.sh
 ```
 Alternatively, inside Ubuntu WSL you may use `./setup.sh`.
 
+### Windows/WSL without admin (Docker unavailable)
+
+If you do not have administrative rights on the Windows host, you may be unable to install Docker Desktop or enable WSL integration. In that case, you can still diagnose why `./setup-win.sh` appears stuck and capture logs for help:
+
+Diagnostics to run inside your WSL shell:
+
+```bash
+# Verify Docker/Compose availability and daemon connectivity
+docker --version
+docker compose version
+docker info
+```
+
+If these fail, start Docker Desktop (if installed) and enable WSL2 integration for your distro (Docker Desktop → Settings → Resources → WSL integration). If you cannot change settings due to no-admin, share the output of the commands above.
+
+Trace the setup script to see the exact step:
+
+```bash
+bash -x ./setup-win.sh 2>&1 | tee setup-debug.log
+```
+
+If it stalls at “Compose: build and start”, surface detailed build progress:
+
+```bash
+COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose build --no-cache --progress=plain
+docker compose up -d
+docker compose ps
+docker compose logs --tail=200 | cat
+```
+
+If it reaches “Health checks” and seems stuck, ensure `curl` exists in WSL and probe the health endpoint:
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl
+docker compose ps
+docker compose logs --tail=200 streamlit-app | cat
+curl -v http://localhost:8501/_stcore/health
+```
+
+Optional: first boots can be slow while Python wheels download. You can pre-pull base images to speed up:
+
+```bash
+docker pull python:3.9-slim
+docker pull pgvector/pgvector:pg16
+```
+
+Port conflicts (if 8501 or 5432 are already used): edit `docker-compose.yml` and change the published host ports on the left side, e.g. `"8502:8501"` or `"5433:5432"`, then rebuild and start again.
+
+As a fallback inside WSL, you can also try the Linux setup script which performs more checks:
+
+```bash
+chmod +x ./setup.sh
+./setup.sh
+```
+
+When requesting help, include outputs from:
+
+```bash
+docker info || true
+docker compose ps || true
+docker compose logs --tail=200 | cat || true
+curl -v http://localhost:8501/_stcore/health || true
+```
+
 ### If `docker` is not recognized in CMD/PowerShell
 
 - Ensure Docker Desktop is installed and running.

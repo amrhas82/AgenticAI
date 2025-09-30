@@ -118,7 +118,7 @@ fi
 begin_step "Health checks"
 # Basic HTTP wait for Streamlit (shorter timeout on Windows/WSL)
 wait_for_http() {
-  local url="$1"; local timeout="${2:-60}"; local i=0
+  local url="$1"; local timeout="${2:-120}"; local i=0
   while (( i < timeout )); do
     if curl -fsS "$url" >/dev/null 2>&1; then return 0; fi
     sleep 1; i=$((i+1))
@@ -126,7 +126,7 @@ wait_for_http() {
   return 1
 }
 
-if wait_for_http "http://localhost:8501/_stcore/health" 60; then
+if wait_for_http "http://localhost:8501/_stcore/health" 120; then
   record_ok "Streamlit health endpoint responded"
 else
   record_fail "Streamlit did not respond on http://localhost:8501"
