@@ -1,10 +1,12 @@
+import os
 import ollama
 from typing import List, Dict
 
 class OllamaClient:
     def __init__(self):
         # Instantiate a reusable Ollama client
-        self.client = ollama.Client()
+        self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.client = ollama.Client(host=self.host)
 
     def get_available_models(self) -> List[str]:
         """Get list of available Ollama models with error handling"""
@@ -27,4 +29,10 @@ class OllamaClient:
             response = self.client.chat(model=model, messages=messages)
             return response['message']['content']
         except Exception as e:
-            raise Exception(f"Ollama API error: {str(e)}")
+            # Enrich common connection error with actionable hint
+            err_msg = str(e)
+            if "Connection refused" in err_msg or "Failed to establish a new connection" in err_msg:
+                raise Exception(
+                    f"Ollama API error: {err_msg}. Check that Ollama is reachable at {self.host} and that your container/env OLLAMA_HOST points to it."
+                )
+            raise Exception(f"Ollama API error: {err_msg}")
