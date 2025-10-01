@@ -1,7 +1,5 @@
 import streamlit as st
-from typing import Optional
 from datetime import datetime
-import pandas as pd
 
 
 class DocumentManager:
@@ -153,5 +151,102 @@ class DocumentManager:
                 
                 progress_bar.progress(100)
                 status_text.text("Complete!")
-                
-                st
+
+    def _render_overview(self, documents):
+        """Show a simple overview table of uploaded documents"""
+        try:
+            # Normalize rows
+            rows = []
+            for doc in documents:
+                rows.append({
+                    "name": doc.get("name", "unknown"),
+                    "chunks": doc.get("chunks", 0),
+                    "last_updated": (doc.get("last_updated") or "")[:19]
+                })
+            st.dataframe(rows, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Unable to render overview: {e}")
+
+    def _render_search_interface(self):
+        """Interactive search UI for vector database"""
+        query = st.text_input("Search query", placeholder="Enter keywords or a question...")
+        limit = st.slider("Results", min_value=1, max_value=20, value=5)
+
+        # Optional filter by document name
+        try:
+            documents = self.vector_db.list_documents()
+            doc_names = [d.get("name") for d in documents]
+        except Exception:
+            doc_names = []
+
+        filter_doc = st.selectbox(
+            "Filter by document (optional)",
+            options=["All"] + doc_names,
+            index=0
+        )
+
+        if st.button("🔍 Run Search", type="primary") and query.strip():
+            filters = None
+            if filter_doc and filter_doc != "All":
+                filters = {"document_name": filter_doc}
+
+            try:
+                results = self.vector_db.search_similar(query, limit=limit, filters=filters, rerank=True)
+            except TypeError:
+                # Fallback for basic VectorDB without filters/rerank
+                results = self.vector_db.search_similar(query, limit=limit)
+
+            if not results:
+                st.info("No matches found.")
+                return
+
+            # Render results (support both EnhancedVectorDB and VectorDB outputs)
+            if isinstance(results[0], dict):
+                for idx, item in enumerate(results, start=1):
+                    st.markdown(f"**{idx}. (score: {item.get('score', 0):.3f})**")
+                    st.write(item.get("chunk_text", ""))
+                    meta = item.get("metadata", {})
+                    if meta:
+                        with st.expander("Metadata"):
+                            st.json(meta)
+                    st.divider()
+            else:
+                for idx, text in enumerate(results, start=1):
+                    st.markdown(f"**{idx}.**")
+                    st.write(text)
+                    st.divider()
+
+    def _render_analytics(self, documents):
+        """Basic analytics of document library"""
+        total_docs = len(documents)
+        total_chunks = sum(doc.get("chunks", 0) for doc in documents)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Documents", total_docs)
+        with col2:
+            st.metric("Total Chunks", total_chunks)
+
+        # Top documents by chunks
+        if documents:
+            st.subheader("Top Documents (by chunks)")
+            top = sorted(documents, key=lambda d: d.get("chunks", 0), reverse=True)[:10]
+            for doc in top:
+                name = doc.get("name", "unknown")
+                chunks = doc.get("chunks", 0)
+                updated = (doc.get("last_updated") or "")[:19]
+                st.write(f"- {name}: {chunks} chunks (updated {updated})")
+
+    def _split_text(self, text: str, chunk_size: int, chunk_overlap: int):
+        """Split plain text into overlapping chunks by words"""
+        words = text.split()
+        chunks = []
+        step = max(1, chunk_size - chunk_overlap)
+        for i in range(0, len(words), step):
+            chunk_words = words[i:i + chunk_size]
+            if not chunk_words:
+                break
+            chunks.append(" ".join(chunk_words))
+            if i + chunk_size >= len(words):
+                break
+        return chunks
