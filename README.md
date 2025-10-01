@@ -2,6 +2,18 @@
 
 A complete local AI agent playground for learning and experimentation. No API keys, no internet required after setup!
 
+## ✨ Features
+
+✅ **Local LLMs** - Full Ollama integration (llama2, mistral, codellama, etc.)  
+✅ **MCP Support** - Klavis MCP self-hosted integration  
+✅ **Persistent Memory** - JSON-based conversation history with search & tags  
+✅ **Multi-Format Documents** - PDF, TXT, MD, DOCX support  
+✅ **Vector Database** - PostgreSQL + pgvector with JSON fallback  
+✅ **External LLMs** - OpenAI API support  
+✅ **API Key Management** - Secure authentication for external agents  
+✅ **RAG System** - Semantic search with reranking  
+✅ **Multi-Agent System** - Specialized agents with tools
+
 ## Quick Start
 
 1. **Linux (Ubuntu/Debian/Zorin recommended)**
@@ -15,9 +27,16 @@ A complete local AI agent playground for learning and experimentation. No API ke
    - Install Docker + Compose for your distro, then run: `docker compose up -d`
 3. **Access**: Open http://localhost:8501
 
-The Streamlit UI includes multiple agents (General Chat, RAG Assistant, Coder) and supports uploading pdf/txt/md files.
+The Streamlit UI includes multiple agents (General Chat, RAG Assistant, Coder) and supports uploading pdf/txt/md/docx files.
 
-## Full documentation in `/docs/` folder:
+## 📚 Documentation
+
+### Quick Links
+- **[🚀 Quick Start](QUICK_START.md)** - Get running in 5 minutes
+- **[✅ Completion Report](COMPLETION_REPORT.md)** - All features verified
+- **[📋 Review Summary](REVIEW_SUMMARY.md)** - Detailed implementation review
+
+### Full Documentation
 - [High Level Architecture](docs/HLA.md)
 - [Setup Guide](docs/SETUP.md)
 - [Technical Design](docs/HLD.md)
