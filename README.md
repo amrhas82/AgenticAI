@@ -34,7 +34,7 @@ The Streamlit UI includes multiple agents (General Chat, RAG Assistant, Coder) a
 ### 🎯 Start Here
 - **[📋 Documentation Index](DOCUMENTATION_INDEX.md)** - Find the right doc for your needs
 - **[❓ FAQ Answered](AI_AGENT_FAQ_ANSWERED.md)** - Answers to: conversation history, MCP setup, document upload
-- **[🔌 MCP Setup Guide](MCP_SETUP_GUIDE.md)** - Automated MCP Klavis setup (5 minutes)
+- **[🔌 Klavis MCP Setup](KLAVIS_MCP_QUICKSTART.md)** - Setup Reddit, Gmail, Notion MCP (5 minutes)
 
 ### Quick Links
 - **[🚀 Quick Start](QUICK_START.md)** - Get running in 5 minutes
