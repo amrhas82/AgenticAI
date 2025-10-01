@@ -168,6 +168,20 @@ docker compose up -d
 docker compose logs -f streamlit-app
 ```
 
+### Health Check (post-setup)
+```bash
+bash scripts/health_check.sh
+```
+
+What it checks:
+- Streamlit health at `http://localhost:8501/_stcore/health`
+- Ollama on host at `http://localhost:11434/api/tags`
+- If Docker is available and container is running, connectivity from container to `http://host.docker.internal:11434`
+- Prints a concise summary and suggested fixes
+
+### Troubleshooting
+- Refer to [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for error → fix mappings.
+
 ### Access App
 ```
 http://localhost:8501
