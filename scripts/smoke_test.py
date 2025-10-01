@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import importlib
+from pathlib import Path
 
 
 def _probe_import(module_name: str) -> dict:
@@ -13,6 +14,10 @@ def _probe_import(module_name: str) -> dict:
 
 
 def main():
+    # Ensure src is on path for local imports
+    src_path = str(Path(__file__).resolve().parent.parent / "src")
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
     results = {
         "env": {
             "OPENAI_API_KEY_present": bool(os.getenv("OPENAI_API_KEY")),
