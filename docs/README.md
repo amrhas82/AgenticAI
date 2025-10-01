@@ -79,6 +79,9 @@ newgrp docker
 - Both scripts print a step-wise summary at the end, including any failures and a hint to view logs.
 - View logs: `docker compose logs -f | cat`
 - Streamlit-only logs: `docker compose logs -f streamlit-app | cat`
+- Post-setup verification: `bash scripts/health_check.sh`
+  - Verifies Streamlit, Ollama on the host, and (if available) container-to-host connectivity.
+  - Prints a concise summary with actionable fixes (e.g., bind Ollama to `0.0.0.0:11434`).
 
 ### Windows/WSL without admin (Docker unavailable)
 - If you cannot install or enable Docker Desktop/WSL integration, follow the diagnostics in the Setup Guide section "Windows/WSL without admin (Docker unavailable)". This includes tracing `setup-win.sh`, showing detailed compose build progress, checking service logs, and probing the Streamlit health endpoint.
