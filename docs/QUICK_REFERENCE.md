@@ -179,6 +179,9 @@ What it checks:
 - If Docker is available and container is running, connectivity from container to `http://host.docker.internal:11434`
 - Prints a concise summary and suggested fixes
 
+### Troubleshooting
+- Refer to [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for error → fix mappings.
+
 ### Access App
 ```
 http://localhost:8501
