@@ -1,7 +1,5 @@
 import streamlit as st
-import json
 import os
-from datetime import datetime
 from dotenv import load_dotenv
 
 from ollama_client import OllamaClient
@@ -15,7 +13,7 @@ from database.enhanced_vector_db import EnhancedVectorDB
 from ui.document_manager import DocumentManager
 from ui.conversation_manager import EnhancedMemoryManager, ConversationManagerUI
 from utils.config_manager import ConfigManager, ConfigUI
-from agents.agent_system import AgentRegistry, SearchTool, CodeExecutorTool, MemoryTool
+from agents.agent_system import AgentRegistry
 
 # Load environment variables
 load_dotenv()
@@ -37,7 +35,8 @@ class AIPlaygroundApp:
         
         # Core components
         self.ollama = OllamaClient()
-        self.openai_client = OpenAIClient(api_key=self.config_manager.system_config.database_url)
+        # Initialize OpenAI client with environment key (overridden via UI when provided)
+        self.openai_client = OpenAIClient(api_key=os.getenv("OPENAI_API_KEY"))
         self.pdf_processor = PDFProcessor()
         self.mcp_client = MCPClient()
         
