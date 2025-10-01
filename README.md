@@ -31,12 +31,22 @@ The Streamlit UI includes multiple agents (General Chat, RAG Assistant, Coder) a
 
 ## 📚 Documentation
 
+### 🎯 Start Here
+- **[📋 Documentation Index](DOCUMENTATION_INDEX.md)** - Find the right doc for your needs
+- **[❓ FAQ Answered](AI_AGENT_FAQ_ANSWERED.md)** - Answers to: conversation history, MCP setup, document upload
+- **[🔌 Klavis MCP Setup](KLAVIS_MCP_QUICKSTART.md)** - Setup Reddit, Gmail, Notion MCP (5 minutes)
+
 ### Quick Links
 - **[🚀 Quick Start](QUICK_START.md)** - Get running in 5 minutes
+- **[📖 AI Agent Guide](docs/AI_AGENT_GUIDE.md)** - Complete guide to agents, MCP, and vector DB
+- **[⚡ Quick Reference](QUICK_REFERENCE.md)** - Common commands and code snippets
 - **[✅ Completion Report](COMPLETION_REPORT.md)** - All features verified
 - **[📋 Review Summary](REVIEW_SUMMARY.md)** - Detailed implementation review
 
 ### Full Documentation
+- [AI Agent System Guide](docs/AI_AGENT_GUIDE.md) - Agents, conversation history, MCP integration, document upload
+- [Architecture Diagrams](docs/AGENT_ARCHITECTURE_DIAGRAM.md) - Visual system architecture
+- [Implementation Guide](AGENT_IMPROVEMENTS.md) - Code for advanced features
 - [High Level Architecture](docs/HLA.md)
 - [Setup Guide](docs/SETUP.md)
 - [Technical Design](docs/HLD.md)
