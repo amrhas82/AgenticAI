@@ -5,9 +5,9 @@ from datetime import datetime
 class DocumentManager:
     """Enhanced document management UI for Streamlit"""
     
-    def __init__(self, vector_db, pdf_processor):
+    def __init__(self, vector_db, doc_processor):
         self.vector_db = vector_db
-        self.pdf_processor = pdf_processor
+        self.doc_processor = doc_processor
     
     def render_document_sidebar(self):
         """Render document management section in sidebar"""
@@ -52,7 +52,7 @@ class DocumentManager:
         st.write("**Upload New Document:**")
         uploaded_file = st.file_uploader(
             "Choose file",
-            type=["pdf", "txt", "md"],
+            type=["pdf", "txt", "md", "docx"],
             key="doc_uploader"
         )
         
@@ -123,13 +123,12 @@ class DocumentManager:
                 status_text.text("Extracting text...")
                 progress_bar.progress(25)
                 
-                if name.lower().endswith('.pdf'):
-                    self.pdf_processor.chunk_size = chunk_size
-                    self.pdf_processor.chunk_overlap = chunk_overlap
-                    chunks = self.pdf_processor.process_pdf(uploaded_file)
-                else:
-                    content = uploaded_file.read().decode('utf-8', errors='ignore')
-                    chunks = self._split_text(content, chunk_size, chunk_overlap)
+                # Update processor settings
+                self.doc_processor.chunk_size = chunk_size
+                self.doc_processor.chunk_overlap = chunk_overlap
+                
+                # Process the file based on type
+                chunks = self.doc_processor.process_file(uploaded_file, name)
                 
                 if not chunks:
                     st.warning("No content extracted from the document.")
@@ -151,6 +150,10 @@ class DocumentManager:
                 
                 progress_bar.progress(100)
                 status_text.text("Complete!")
+                st.success(f"✅ Successfully uploaded {name}")
+                
+            except Exception as e:
+                st.error(f"❌ Error processing document: {e}")
 
     def _render_overview(self, documents):
         """Show a simple overview table of uploaded documents"""

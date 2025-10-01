@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 from ollama_client import OllamaClient
-from pdf_processor import PDFProcessor
+from document_processor import DocumentProcessor
 from mcp_client import MCPClient
 from openai_client import OpenAIClient
 from typing import Optional
@@ -37,13 +37,13 @@ class AIPlaygroundApp:
         self.ollama = OllamaClient()
         # Initialize OpenAI client with environment key (overridden via UI when provided)
         self.openai_client = OpenAIClient(api_key=os.getenv("OPENAI_API_KEY"))
-        self.pdf_processor = PDFProcessor()
+        self.doc_processor = DocumentProcessor()
         self.mcp_client = MCPClient()
         
         # Enhanced components
         self.vector_db = EnhancedVectorDB()
         self.memory = EnhancedMemoryManager()
-        self.doc_manager = DocumentManager(self.vector_db, self.pdf_processor)
+        self.doc_manager = DocumentManager(self.vector_db, self.doc_processor)
         self.conversation_ui = ConversationManagerUI(self.memory)
         
         # Agent system
