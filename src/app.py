@@ -5,25 +5,22 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from ollama_client import OllamaClient
-from memory_manager import MemoryManager
 from pdf_processor import PDFProcessor
-from vector_db import VectorDB
 from mcp_client import MCPClient
-from utils.config import Config
 from openai_client import OpenAIClient
 from typing import Optional
+
+# Import new enhanced modules
+from database.enhanced_vector_db import EnhancedVectorDB
+from ui.document_manager import DocumentManager
+from ui.conversation_manager import EnhancedMemoryManager, ConversationManagerUI
+from utils.config_manager import ConfigManager, ConfigUI
+from agents.agent_system import AgentRegistry, SearchTool, CodeExecutorTool, MemoryTool
 
 # Load environment variables
 load_dotenv()
 
-# Validate local modules availability (already imported above)
-try:
-    _ = (OllamaClient, MemoryManager, PDFProcessor, VectorDB, MCPClient, Config)
-except Exception as e:
-    st.error(f"Module import error: {e}. Please check your installation.")
-    st.stop()
-
-# Page configuration (theme applied via session state toggle later)
+# Page configuration
 st.set_page_config(
     page_title="AI Agent Playground",
     page_icon="🤖",
@@ -34,14 +31,36 @@ st.set_page_config(
 
 class AIPlaygroundApp:
     def __init__(self):
-        self.config = Config()
+        # Configuration
+        self.config_manager = ConfigManager()
+        self.config_ui = ConfigUI(self.config_manager)
+        
+        # Core components
         self.ollama = OllamaClient()
-        self.openai_client = OpenAIClient(api_key=self.config.openai_api_key)
-        self.memory = MemoryManager()
+        self.openai_client = OpenAIClient(api_key=self.config_manager.system_config.database_url)
         self.pdf_processor = PDFProcessor()
-        self.vector_db = VectorDB()
         self.mcp_client = MCPClient()
+        
+        # Enhanced components
+        self.vector_db = EnhancedVectorDB()
+        self.memory = EnhancedMemoryManager()
+        self.doc_manager = DocumentManager(self.vector_db, self.pdf_processor)
+        self.conversation_ui = ConversationManagerUI(self.memory)
+        
+        # Agent system
+        self.agent_registry = AgentRegistry()
+        self._setup_agents()
+        
         self.init_session_state()
+
+    def _setup_agents(self):
+        """Setup agent registry with tools"""
+        # Create default agents with tools
+        self.agent_registry.create_default_agents(self.vector_db, self.memory)
+        
+        # You can add custom agents here
+        # custom_agent = Agent(...)
+        # self.agent_registry.register(custom_agent)
 
     def init_session_state(self):
         """Initialize session state with defaults"""
@@ -50,25 +69,49 @@ class AIPlaygroundApp:
         if 'provider' not in st.session_state:
             st.session_state.provider = "Local (Ollama)"
         if 'theme' not in st.session_state:
-            st.session_state.theme = "Dark"
+            st.session_state.theme = self.config_manager.system_config.theme
         if 'current_model' not in st.session_state:
             st.session_state.current_model = "llama2"
         if 'openai_model' not in st.session_state:
             st.session_state.openai_model = "gpt-3.5-turbo"
         if 'openai_api_key' not in st.session_state:
-            st.session_state.openai_api_key = self.config.openai_api_key or ""
+            st.session_state.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         if 'current_agent' not in st.session_state:
             st.session_state.current_agent = "General Chat"
         if 'use_rag' not in st.session_state:
             st.session_state.use_rag = False
         if 'mcp_url' not in st.session_state:
-            st.session_state.mcp_url = os.getenv("MCP_URL", "http://localhost:8080")
+            st.session_state.mcp_url = self.config_manager.system_config.mcp_url
+        if 'page' not in st.session_state:
+            st.session_state.page = "Chat"
+        if 'current_conversation_id' not in st.session_state:
+            st.session_state.current_conversation_id = None
 
     def setup_sidebar(self):
-        """Setup sidebar with controls and error handling"""
+        """Setup sidebar with controls"""
         with st.sidebar:
-            st.title("🤖 AI Playground Controls")
-
+            st.title("🤖 AI Playground")
+            
+            # Navigation
+            st.subheader("Navigation")
+            page = st.radio(
+                "Go to:",
+                ["💬 Chat", "📚 Documents", "🗂️ Conversations", "⚙️ Settings"],
+                key="navigation"
+            )
+            
+            # Update page state
+            if "💬" in page:
+                st.session_state.page = "Chat"
+            elif "📚" in page:
+                st.session_state.page = "Documents"
+            elif "🗂️" in page:
+                st.session_state.page = "Conversations"
+            elif "⚙️" in page:
+                st.session_state.page = "Settings"
+            
+            st.divider()
+            
             # Provider selection
             st.subheader("Provider")
             provider = st.radio(
@@ -87,119 +130,117 @@ class AIPlaygroundApp:
                 selected_model = st.selectbox(
                     "Choose Local Model:",
                     available_models,
-                    index=available_models.index(st.session_state.current_model) if st.session_state.current_model in available_models else 0
+                    index=available_models.index(st.session_state.current_model) 
+                        if st.session_state.current_model in available_models else 0
                 )
                 if selected_model != st.session_state.current_model:
                     st.session_state.current_model = selected_model
                     st.rerun()
             else:
-                openai_models = [
-                    "gpt-4o-mini",
-                    "gpt-4o",
-                    "gpt-3.5-turbo"
-                ]
+                openai_models = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
                 selected_openai_model = st.selectbox(
                     "Choose OpenAI Model:",
                     openai_models,
-                    index=openai_models.index(st.session_state.openai_model) if st.session_state.openai_model in openai_models else 0
+                    index=openai_models.index(st.session_state.openai_model) 
+                        if st.session_state.openai_model in openai_models else 0
                 )
                 if selected_openai_model != st.session_state.openai_model:
                     st.session_state.openai_model = selected_openai_model
                     st.rerun()
 
-                # API Key input (not persisted to disk)
-                st.caption("Enter your OpenAI API key (kept in session only)")
-                api_key_input = st.text_input("OPENAI_API_KEY", value=st.session_state.openai_api_key, type="password")
+                # API Key input
+                st.caption("Enter your OpenAI API key")
+                api_key_input = st.text_input(
+                    "OPENAI_API_KEY", 
+                    value=st.session_state.openai_api_key, 
+                    type="password"
+                )
                 if api_key_input != st.session_state.openai_api_key:
                     st.session_state.openai_api_key = api_key_input
 
             # Agent selection
             st.subheader("Agent Settings")
-            agents = ["General Chat", "RAG Assistant", "Coder (DeepSeek style)"]
-            selected_agent = st.selectbox("Choose Agent:", agents, index=agents.index(st.session_state.current_agent) if st.session_state.current_agent in agents else 0)
+            agents = self.agent_registry.list_agents()
+            selected_agent = st.selectbox(
+                "Choose Agent:", 
+                agents,
+                index=agents.index(st.session_state.current_agent) 
+                    if st.session_state.current_agent in agents else 0
+            )
             use_rag = st.toggle("Enable RAG context", value=st.session_state.use_rag)
+            
             if selected_agent != st.session_state.current_agent or use_rag != st.session_state.use_rag:
                 st.session_state.current_agent = selected_agent
                 st.session_state.use_rag = use_rag
                 st.rerun()
 
-            # Theme selection (applies by injecting CSS; Streamlit needs rerun)
+            # Theme toggle
             st.subheader("UI Settings")
-            theme = st.selectbox("Theme", ["Light", "Dark"], index=0 if st.session_state.theme == "Light" else 1)
+            theme = st.selectbox(
+                "Theme", 
+                ["Light", "Dark"], 
+                index=0 if st.session_state.theme == "Light" else 1
+            )
             if theme != st.session_state.theme:
                 st.session_state.theme = theme
+                self.config_manager.system_config.theme = theme
+                self.config_manager.save_config()
                 st.rerun()
 
-            # Memory management
-            st.subheader("Memory")
-            if st.button("Clear Conversation History"):
-                st.session_state.messages = []
-                st.rerun()
-
-            # PDF Processing with error handling
-            st.subheader("Document Processing")
-            uploaded_file = st.file_uploader("Upload Document (pdf, txt, md)", type=["pdf", "txt", "md"]) 
-            if uploaded_file is not None:
-                if st.button("Process Document"):
-                    try:
-                        name = getattr(uploaded_file, 'name', 'uploaded')
-                        if name.lower().endswith('.pdf'):
-                            chunks = self.pdf_processor.process_pdf(uploaded_file)
-                        else:
-                            content = uploaded_file.read().decode('utf-8', errors='ignore')
-                            chunks = self._split_text(content)
-                        if chunks:
-                            self.vector_db.store_document(chunks, name)
-                            st.success(f"Processed and stored {len(chunks)} chunks from '{name}'.")
-                        else:
-                            st.warning("No content extracted from the document.")
-                    except Exception as e:
-                        st.error(f"Document processing error: {e}")
-
-            # Export conversation
-            st.subheader("Export")
-            if st.session_state.messages:
-                export_data = json.dumps({"messages": st.session_state.messages}, indent=2).encode("utf-8")
-                st.download_button(
-                    label="Download Conversation JSON",
-                    data=export_data,
-                    file_name="conversation.json",
-                    mime="application/json"
-                )
-
+            st.divider()
+            
+            # Quick actions based on current page
+            if st.session_state.page == "Chat":
+                st.subheader("Chat Actions")
+                if st.button("🗑️ Clear Chat"):
+                    st.session_state.messages = []
+                    st.session_state.current_conversation_id = None
+                    st.rerun()
+                
+                if st.session_state.messages and st.button("💾 Save Conversation"):
+                    conv_id = self.memory.save_conversation(
+                        st.session_state.messages,
+                        title=st.session_state.messages[0]['content'][:50] 
+                            if st.session_state.messages else "Untitled"
+                    )
+                    st.session_state.current_conversation_id = conv_id
+                    st.success("Conversation saved!")
+                
+                # Recent conversations quick access
+                st.divider()
+                self.conversation_ui.render_sidebar_quick_access()
+            
+            elif st.session_state.page == "Documents":
+                # Document management in sidebar
+                self.doc_manager.render_document_sidebar()
+            
             # System info
+            st.divider()
             st.subheader("System Info")
             st.write(f"Provider: {st.session_state.provider}")
             if st.session_state.provider == "Local (Ollama)":
-                st.write(f"Current Model: {st.session_state.current_model}")
+                st.write(f"Model: {st.session_state.current_model}")
             else:
-                st.write(f"OpenAI Model: {st.session_state.openai_model}")
+                st.write(f"Model: {st.session_state.openai_model}")
+            st.write(f"Agent: {st.session_state.current_agent}")
             st.write(f"Messages: {len(st.session_state.messages)}")
-
-            # MCP Status with error handling
-            st.subheader("MCP Status")
-            mcp_input = st.text_input("MCP URL", value=st.session_state.mcp_url)
-            if mcp_input != st.session_state.mcp_url:
-                st.session_state.mcp_url = mcp_input
-                self.mcp_client.update_url(mcp_input)
-            try:
-                mcp_status = self.mcp_client.get_status()
-                st.write(f"Klavis MCP: {mcp_status}")
-            except Exception as e:
-                st.error(f"MCP Status error: {str(e)}")
+            
+            # Vector DB stats
+            stats = self.vector_db.get_document_stats()
+            st.write(f"Documents: {stats.get('total_documents', 0)}")
+            st.write(f"Chunks: {stats.get('total_chunks', 0)}")
 
     def display_chat(self):
-        """Display chat interface with error handling"""
+        """Display chat interface"""
         st.title("💬 AI Agent Playground")
-        st.markdown("Chat with local AI models and explore agent capabilities!")
+        st.markdown("Chat with AI agents and explore capabilities!")
 
-        # Apply theme by simple CSS variables (affects background and text)
+        # Apply theme
         if st.session_state.theme == "Dark":
             st.markdown(
                 """
                 <style>
                 .stApp { background-color: #0e1117; color: #e8eaed; }
-                .stMarkdown, .stTextInput, .stButton, .stSelectbox, .stRadio { color: #e8eaed; }
                 </style>
                 """,
                 unsafe_allow_html=True,
@@ -214,44 +255,56 @@ class AIPlaygroundApp:
                 unsafe_allow_html=True,
             )
 
+        # Display current agent info
+        current_agent = self.agent_registry.get(st.session_state.current_agent)
+        if current_agent:
+            with st.expander("ℹ️ Current Agent Info", expanded=False):
+                st.write(f"**Agent:** {current_agent.config.name}")
+                st.write(f"**System Prompt:** {current_agent.config.system_prompt[:200]}...")
+                if current_agent.tools:
+                    st.write(f"**Available Tools:** {', '.join(current_agent.tools.keys())}")
+
         # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        # Chat input with error handling
+        # Chat input
         if prompt := st.chat_input("What would you like to explore?"):
             # Add user message
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # Build system prompt and optional RAG context
-            system_prompt = self._get_system_prompt()
-            rag_context = None
-            if st.session_state.use_rag:
-                try:
-                    hits = self.vector_db.search_similar(prompt)
-                    rag_context = "\n\n".join(hits) if hits else None
-                except Exception as e:
-                    st.warning(f"RAG retrieval error: {e}")
-
-            augmented = self._build_augmented_prompt(prompt, system_prompt, rag_context)
-
-            # Generate response and display
+            # Get agent and generate response
+            agent = self.agent_registry.get(st.session_state.current_agent)
+            
             with st.chat_message("assistant"):
                 if st.session_state.provider == "Local (Ollama)":
                     try:
                         with st.spinner("Thinking..."):
-                            response = self.ollama.generate_response(
-                                augmented,
-                                st.session_state.messages[:-1],
-                                st.session_state.current_model
-                            )
+                            if agent:
+                                # Use agent system
+                                result = agent.process_message(prompt, self.ollama)
+                                response = result["response"]
+                                
+                                # Show tool usage if applicable
+                                if result["tool_used"]:
+                                    with st.expander("🔧 Tool Used"):
+                                        st.json(result["tool_result"])
+                            else:
+                                # Fallback to basic generation
+                                response = self.ollama.generate_response(
+                                    prompt,
+                                    st.session_state.messages[:-1],
+                                    st.session_state.current_model
+                                )
                     except Exception as e:
-                        response = f"There was an error generating a response: {e}"
+                        response = f"Error: {e}"
+                    
                     st.markdown(response)
                 else:
+                    # OpenAI streaming
                     if not st.session_state.openai_api_key:
                         st.warning("Please provide an OPENAI_API_KEY in the sidebar.")
                         response = ""
@@ -271,53 +324,28 @@ class AIPlaygroundApp:
             # Add assistant message
             st.session_state.messages.append({"role": "assistant", "content": response})
 
-            # Persist conversation
-            try:
-                self.memory.save_conversation(st.session_state.messages)
-            except Exception:
-                pass
-
-    def _get_system_prompt(self) -> str:
-        agent = st.session_state.current_agent
-        if agent == "Coder (DeepSeek style)":
-            return (
-                "You are a meticulous coding assistant inspired by DeepSeek's reasoning. "
-                "Plan before coding, propose structured steps, write clear, runnable code, "
-                "and verify outputs mentally. Prefer local tools and minimal dependencies."
-            )
-        if agent == "RAG Assistant":
-            return (
-                "You augment answers with retrieved document context. Cite which chunks you used. "
-                "If context is insufficient, say so and ask for more docs."
-            )
-        return "You are a helpful local AI assistant."
-
-    def _build_augmented_prompt(self, user_prompt: str, system_prompt: str, rag_context: Optional[str]) -> str:
-        parts = [f"[System]\n{system_prompt}"]
-        if rag_context:
-            parts.append(f"[Context]\n{rag_context}")
-        parts.append(f"[User]\n{user_prompt}")
-        return "\n\n".join(parts)
-
-    def _split_text(self, text: str):
-        """Split plain text into overlapping chunks (mirrors PDFProcessor)."""
-        words = text.split()
-        chunks = []
-        chunk_size = 1000
-        chunk_overlap = 200
-        for i in range(0, len(words), chunk_size - chunk_overlap):
-            chunk = " ".join(words[i:i + chunk_size])
-            if chunk:
-                chunks.append(chunk)
-            if i + chunk_size >= len(words):
-                break
-        return chunks
+            # Auto-save if enabled
+            if self.config_manager.system_config.auto_save_conversations:
+                try:
+                    self.memory.save_conversation(st.session_state.messages)
+                except Exception:
+                    pass
 
     def run(self):
         """Main application runner"""
         try:
             self.setup_sidebar()
-            self.display_chat()
+            
+            # Route to appropriate page
+            if st.session_state.page == "Chat":
+                self.display_chat()
+            elif st.session_state.page == "Documents":
+                self.doc_manager.render_document_explorer()
+            elif st.session_state.page == "Conversations":
+                self.conversation_ui.render_conversation_history()
+            elif st.session_state.page == "Settings":
+                self.config_ui.render_settings_page()
+                
         except Exception as e:
             st.error(f"Application error: {str(e)}")
             st.info("Please check that all services are running properly.")
