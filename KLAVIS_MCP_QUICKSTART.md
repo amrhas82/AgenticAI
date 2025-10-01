@@ -3,6 +3,8 @@
 **Last Updated**: October 1, 2025  
 **Based on**: https://github.com/Klavis-AI/klavis
 
+⚠️ **DISCLAIMER**: This script is based on the Klavis GitHub repository but has NOT been tested with actual Klavis servers. It's a starting point - you may need to adjust based on actual Klavis documentation and your specific setup.
+
 ---
 
 ## 🚀 One-Command Setup
