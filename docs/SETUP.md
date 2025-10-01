@@ -80,7 +80,14 @@ docker pull python:3.9-slim
 docker pull pgvector/pgvector:pg16
 ```
 
-Port conflicts (if 8501 or 5432 are already used): edit `docker-compose.yml` and change the published host ports on the left side, e.g. `"8502:8501"` or `"5433:5432"`, then rebuild and start again.
+Port conflicts (if 8501 or 5432 are already used):
+
+- Preferred: set a port in `.env` and restart:
+  ```bash
+  echo "STREAMLIT_PORT=8502" >> .env
+  docker compose up -d
+  ```
+- Alternative: edit `docker-compose.yml` and change the published host ports on the left side, e.g. `"8502:8501"` or `"5433:5432"`, then rebuild and start again.
 
 As a fallback inside WSL, you can also try the Linux setup script which performs more checks:
 
