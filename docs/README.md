@@ -100,6 +100,9 @@ ollama pull llama3
 ollama pull mistral
 ollama pull qwen2.5:7b
 ollama pull phi3:mini
+#deekseek coder
+ollama pull deepseek-coder:6.7b
+ollama pull deepseek-coder:33b
 
 # Coding-focused model
 ollama pull codellama:7b-instruct
