@@ -1,0 +1,136 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                   QUICK REFERENCE CARD                        ║
+║              AI Agent Playground - Local Mode                 ║
+╚═══════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────┐
+│ GETTING STARTED (CHOOSE ONE)                                  │
+└───────────────────────────────────────────────────────────────┘
+
+  ONE-CLICK START:
+    $ ./run_local.sh
+    → Starts everything, opens at http://localhost:8501
+
+  INTERACTIVE MENU:
+    $ ./menu.sh
+    → Choose from 10 options
+
+┌───────────────────────────────────────────────────────────────┐
+│ FIRST TIME SETUP                                              │
+└───────────────────────────────────────────────────────────────┘
+
+  $ ./menu.sh
+    1. Select Option 1: Quick Setup (Native)
+    2. Select Option 8: Install Model → pick llama3.2:1b
+    3. Select Option 4: Start Services
+    4. Open: http://localhost:8501
+    5. Start chatting!
+
+┌───────────────────────────────────────────────────────────────┐
+│ AFTER REBOOT/HIBERNATE                                        │
+└───────────────────────────────────────────────────────────────┘
+
+  QUICK:
+    $ ./run_local.sh
+
+  OR:
+    $ ./menu.sh → Option 4 (Start Services)
+
+┌───────────────────────────────────────────────────────────────┐
+│ COMMON TASKS                                                  │
+└───────────────────────────────────────────────────────────────┘
+
+  Check Status:
+    $ ./menu.sh → Option 3 (Health Check)
+
+  View Logs:
+    $ ./menu.sh → Option 7 (View Logs)
+    $ tail -f logs/streamlit.log
+
+  See All Paths:
+    $ ./menu.sh → Option 9 (System Information)
+
+  Fix Problems:
+    $ ./menu.sh → Option 10 (Troubleshooting)
+
+  Install Models:
+    $ ./menu.sh → Option 8 (Install/Pull Models)
+
+  Stop Everything:
+    $ ./menu.sh → Option 5 (Stop All Services)
+
+┌───────────────────────────────────────────────────────────────┐
+│ FILE LOCATIONS                                                │
+└───────────────────────────────────────────────────────────────┘
+
+  Logs:           ./logs/
+  Data:           ./data/
+  Models:         ~/.ollama/models/
+  Config:         ./.env
+  Main App:       ./src/app.py
+
+┌───────────────────────────────────────────────────────────────┐
+│ MANUAL COMMANDS                                               │
+└───────────────────────────────────────────────────────────────┘
+
+  Start Ollama:
+    $ ollama serve &
+
+  Start UI:
+    $ streamlit run src/app.py
+
+  Install Model:
+    $ ollama pull llama3.2:1b
+
+  Check Ollama:
+    $ curl http://localhost:11434/api/tags
+
+  Check Streamlit:
+    $ curl http://localhost:8501/_stcore/health
+
+┌───────────────────────────────────────────────────────────────┐
+│ DOCUMENTATION                                                 │
+└───────────────────────────────────────────────────────────────┘
+
+  START_HERE.md           - Quick start guide
+  README_SIMPLE.md        - Simple getting started
+  FIXES_SUMMARY.md        - All issues fixed
+  docs/STARTUP_GUIDE.md   - Complete guide + auto-start
+  docs/TROUBLESHOOTING.md - Detailed troubleshooting
+
+┌───────────────────────────────────────────────────────────────┐
+│ TROUBLESHOOTING                                               │
+└───────────────────────────────────────────────────────────────┘
+
+  Port in Use:
+    $ ./menu.sh → Option 5 (Stop All)
+
+  No Models:
+    $ ./menu.sh → Option 8 (Install Models)
+
+  Services Not Starting:
+    $ ./menu.sh → Option 10 (Troubleshooting)
+
+  See What's Wrong:
+    $ tail -f logs/streamlit.log
+    $ tail -f logs/ollama.log
+
+┌───────────────────────────────────────────────────────────────┐
+│ KEY POINTS                                                    │
+└───────────────────────────────────────────────────────────────┘
+
+  ✓ No Docker needed for basic use
+  ✓ All logs in ./logs/ directory
+  ✓ Use ./menu.sh for everything
+  ✓ Use ./run_local.sh for quick start
+  ✓ Models stored in ~/.ollama/models/
+  ✓ After reboot, just restart services
+
+╔═══════════════════════════════════════════════════════════════╗
+║                  SIMPLEST WAY TO START:                       ║
+║                                                               ║
+║                    $ ./run_local.sh                           ║
+║                                                               ║
+║               Opens at: http://localhost:8501                 ║
+╚═══════════════════════════════════════════════════════════════╝
+
