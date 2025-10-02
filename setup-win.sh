@@ -44,6 +44,11 @@ handle_err() {
   if [[ "$cmd" == docker* || "$cmd" == *" docker "* || "$cmd" == *"docker compose"* ]]; then
     record_fail "Docker command failed in step '${CURRENT_STEP}': ${cmd}"
     record_warn "Ensure Docker Desktop is running and WSL2 integration is enabled."
+    # Offer cleanup on Docker failures
+    if [[ -n "${COMPOSE_CMD:-}" ]] && [[ "${CURRENT_STEP}" == "Compose: build and start" ]]; then
+      echo "🧹 Cleaning up failed build artifacts..."
+      ${COMPOSE_CMD} down --volumes --remove-orphans 2>/dev/null || true
+    fi
   else
     record_fail "Error in step '${CURRENT_STEP}' at line ${line}: ${cmd}"
   fi
@@ -80,15 +85,31 @@ begin_step "Environment defaults"
 if [ ! -f .env ]; then
   echo "📝 Creating default .env file..."
   cat > .env << 'EOF'
-# Local development defaults
-OLLAMA_HOST=http://localhost:11434
+# Local development defaults - using host.docker.internal for Docker container access
+OLLAMA_HOST=http://host.docker.internal:11434
 EMBED_MODEL=nomic-embed-text
 EMBED_DIM=768
-MCP_URL=http://localhost:8080
+MCP_URL=http://host.docker.internal:8080
 EOF
   record_ok ".env created"
 else
   record_ok ".env present"
+fi
+
+begin_step "Verify dependencies"
+# Check curl is available
+if ! have_cmd curl; then
+  record_fail "curl not found. Install with: sudo apt-get install curl"
+else
+  record_ok "curl is available"
+fi
+
+# Check if Ollama is running
+if curl -fsS "http://localhost:11434/api/tags" >/dev/null 2>&1; then
+  record_ok "Ollama is running on localhost:11434"
+else
+  record_warn "Ollama not detected on localhost:11434. Install from https://ollama.ai"
+  record_warn "Services will start but may fail without Ollama running."
 fi
 
 begin_step "Compose: build and start"
@@ -126,13 +147,32 @@ wait_for_http() {
   return 1
 }
 
+# PostgreSQL health check
+wait_for_postgres() {
+  local timeout="${1:-30}"; local i=0
+  while (( i < timeout )); do
+    if docker exec -i $(docker ps -q -f name=postgres) pg_isready -U ai_user -d ai_playground >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1; i=$((i+1))
+  done
+  return 1
+}
+
+if wait_for_postgres 30; then
+  record_ok "PostgreSQL is ready"
+else
+  record_warn "PostgreSQL health check timed out (may still be initializing)"
+fi
+
 if wait_for_http "http://localhost:8501/_stcore/health" 120; then
   record_ok "Streamlit health endpoint responded"
 else
   record_fail "Streamlit did not respond on http://localhost:8501"
   # Print recent logs to aid debugging
   if [[ -n "${COMPOSE_CMD:-}" ]]; then
-    ${COMPOSE_CMD} logs --tail=200 | cat || true
+    echo "🔍 Recent logs:"
+    ${COMPOSE_CMD} logs --tail=50 streamlit-app | cat || true
   fi
 fi
 

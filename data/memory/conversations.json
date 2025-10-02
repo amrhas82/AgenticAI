@@ -1,3 +1,175 @@
 {
-  "conversations": []
+  "conversations": [
+    {
+      "timestamp": "2025-09-30T16:20:00.752120",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hey there"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-09-30T16:20:12.746481",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hey there"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "what's up?"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-09-30T16:21:52.473620",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hey there"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "what's up?"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "hello"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-09-30T16:29:17.845269",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hey there"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "what's up?"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "hello"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-09-30T16:29:44.608060",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hey there"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "what's up?"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "hello"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        },
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-09-30T16:33:27.487747",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hello"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-09-30T16:37:47.246673",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hello"
+        },
+        {
+          "role": "assistant",
+          "content": "There was an error generating a response: Ollama API error: [Errno 111] Connection refused"
+        }
+      ]
+    }
+  ]
 }
