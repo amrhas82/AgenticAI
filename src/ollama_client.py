@@ -12,7 +12,16 @@ class OllamaClient:
         """Get list of available Ollama models with error handling"""
         try:
             models = self.client.list()
-            return [model['name'] for model in models['models']]
+            items = models.get('models') if isinstance(models, dict) else models
+            items = items or []
+            names = []
+            for m in items:
+                if not isinstance(m, dict):
+                    continue
+                n = m.get('name') or m.get('model') or m.get('id')
+                if n:
+                    names.append(n)
+            return names or ["llama2","mistral"]
         except Exception as e:
             # Avoid UI dependencies here; return reasonable defaults
             return ["llama2", "mistral"]
