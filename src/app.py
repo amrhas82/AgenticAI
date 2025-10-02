@@ -125,7 +125,10 @@ class AIPlaygroundApp:
             # Model selection
             st.subheader("Model Settings")
             if st.session_state.provider == "Local (Ollama)":
-                available_models = self.ollama.get_available_models()
+                try:
+                    available_models = self.ollama.get_available_models()
+                except Exception:
+                    available_models = ["llama2","mistral"]
                 selected_model = st.selectbox(
                     "Choose Local Model:",
                     available_models,
