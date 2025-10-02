@@ -151,7 +151,7 @@ class AIPlaygroundApp:
                 st.caption("Enter your OpenAI API key")
                 api_key_input = st.text_input(
                     "OPENAI_API_KEY", 
-                    value=st.session_state.openai_api_key, 
+                    value=st.session_state.openai_api_key,
                     type="password"
                 )
                 if api_key_input != st.session_state.openai_api_key:
@@ -159,7 +159,7 @@ class AIPlaygroundApp:
 
             # Agent selection
             st.subheader("Agent Settings")
-            agents = self.agent_registry.list_agents()
+            agents = ["General Chat", "RAG Assistant", "Coder (DeepSeek style)"]
             selected_agent = st.selectbox(
                 "Choose Agent:", 
                 agents,
