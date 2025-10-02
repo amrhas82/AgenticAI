@@ -170,25 +170,53 @@ class Agent:
         
         return prompt
     
-    def process_message(self, message: str, llm_client) -> Dict[str, Any]:
-        """Process a message with potential tool usage"""
-        
-        # Add user message to history
-        self.conversation_history.append({
+    def process_message(self, message: str, llm_client, model: str = None, conversation_history: List[Dict] = None) -> Dict[str, Any]:
+        """Process a message with potential tool usage
+
+        Args:
+            message: User message to process
+            llm_client: LLM client instance
+            model: Model name to use
+            conversation_history: External conversation history (from Streamlit session)
+        """
+
+        # Get LLM response - use provided model or fallback to a default
+        actual_model = model or "deepseek-coder:1.3b"
+
+        # Use provided history or fallback to internal
+        history = conversation_history if conversation_history is not None else self.conversation_history
+
+        # Add system prompt as first message only if history is empty
+        messages_with_system = []
+        if not history:
+            system_msg = self.get_system_prompt()
+            messages_with_system.append({
+                "role": "system",
+                "content": system_msg
+            })
+
+        # Add conversation history (last 10 messages to avoid context explosion)
+        messages_with_system.extend(history[-10:])
+
+        # Add current user message
+        messages_with_system.append({
             "role": "user",
             "content": message
         })
-        
-        # Generate response with system prompt
-        system_msg = self.get_system_prompt()
-        augmented_message = f"{system_msg}\n\nUser: {message}"
-        
-        # Get LLM response
+
+        # Get LLM response using proper message format
         response = llm_client.generate_response(
-            augmented_message,
-            self.conversation_history[:-1],
-            model=self.config.name
+            message,
+            messages_with_system[:-1],  # History includes system message
+            model=actual_model
         )
+
+        # Update internal history only if not using external
+        if conversation_history is None:
+            self.conversation_history.append({
+                "role": "user",
+                "content": message
+            })
         
         # Check if response is a tool call
         tool_result = None
@@ -199,24 +227,35 @@ class Agent:
                     tool = self.tools[tool_call["tool"]]
                     args = tool_call.get("arguments", {})
                     tool_result = tool.execute(**args)
-                    
+
                     # Generate final response with tool result
-                    tool_context = f"\n\nTool '{tool.name()}' returned: {json.dumps(tool_result, indent=2)}"
-                    final_prompt = f"{system_msg}{tool_context}\n\nUser: {message}\n\nProvide a natural language response using the tool result."
-                    
+                    tool_context = f"Tool '{tool.name()}' returned: {json.dumps(tool_result, indent=2)}\n\nProvide a natural language response using the tool result."
+
+                    # Add tool context to messages
+                    messages_with_tool = messages_with_system.copy()
+                    messages_with_tool.append({
+                        "role": "assistant",
+                        "content": f"Using tool: {tool.name()}"
+                    })
+                    messages_with_tool.append({
+                        "role": "user",
+                        "content": tool_context
+                    })
+
                     response = llm_client.generate_response(
-                        final_prompt,
-                        self.conversation_history[:-1],
-                        model=self.config.name
+                        tool_context,
+                        messages_with_tool[:-1],
+                        model=actual_model
                     )
             except json.JSONDecodeError:
                 pass  # Not a tool call, continue with normal response
-        
-        # Add assistant response to history
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": response
-        })
+
+        # Update internal history only if not using external
+        if conversation_history is None:
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": response
+            })
         
         return {
             "response": response,
