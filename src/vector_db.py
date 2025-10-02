@@ -4,12 +4,20 @@ import json
 import numpy as np
 import ollama
 
+# Try psycopg2 first (Python < 3.13), then psycopg (3.13+)
 try:
     import psycopg2  # type: ignore
-    _HAVE_PSYCOPG2 = True
+    _HAVE_PSYCOPG = True
+    _PSYCOPG_VERSION = 2
 except Exception:
-    psycopg2 = None  # type: ignore
-    _HAVE_PSYCOPG2 = False
+    try:
+        import psycopg as psycopg2  # type: ignore - Use psycopg3 with psycopg2 compatible API
+        _HAVE_PSYCOPG = True
+        _PSYCOPG_VERSION = 3
+    except Exception:
+        psycopg2 = None  # type: ignore
+        _HAVE_PSYCOPG = False
+        _PSYCOPG_VERSION = 0
 
 
 class VectorDB:
@@ -20,7 +28,7 @@ class VectorDB:
         self._ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self._ollama = ollama.Client(host=self._ollama_host)
         # JSON fallback when Postgres or psycopg2 is unavailable
-        self._use_postgres = bool(self.connection_string) and _HAVE_PSYCOPG2
+        self._use_postgres = bool(self.connection_string) and _HAVE_PSYCOPG
         self._json_path = os.getenv("VECTOR_JSON_PATH", "data/memory/vector_store.json")
         if not self._use_postgres:
             os.makedirs(os.path.dirname(self._json_path), exist_ok=True)

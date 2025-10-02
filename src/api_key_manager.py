@@ -5,12 +5,20 @@ from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 import json
 
+# Try psycopg2 first (Python < 3.13), then psycopg (3.13+)
 try:
     import psycopg2
-    _HAVE_PSYCOPG2 = True
+    _HAVE_PSYCOPG = True
+    _PSYCOPG_VERSION = 2
 except Exception:
-    psycopg2 = None
-    _HAVE_PSYCOPG2 = False
+    try:
+        import psycopg as psycopg2  # Use psycopg3 with psycopg2 compatible API
+        _HAVE_PSYCOPG = True
+        _PSYCOPG_VERSION = 3
+    except Exception:
+        psycopg2 = None
+        _HAVE_PSYCOPG = False
+        _PSYCOPG_VERSION = 0
 
 
 class APIKeyManager:
@@ -20,7 +28,7 @@ class APIKeyManager:
         self.connection_string = os.getenv("DATABASE_URL")
         self.master_key = os.getenv("MASTER_API_KEY")
         self.enable_auth = os.getenv("ENABLE_API_AUTH", "false").lower() == "true"
-        self._use_postgres = bool(self.connection_string) and _HAVE_PSYCOPG2
+        self._use_postgres = bool(self.connection_string) and _HAVE_PSYCOPG
         self._json_path = os.getenv("API_KEYS_JSON_PATH", "data/memory/api_keys.json")
         
         if not self._use_postgres:
