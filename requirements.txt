@@ -1,7 +1,8 @@
 streamlit>=1.40.0,<2
 ollama==0.1.7
-# Install psycopg2-binary only where prebuilt wheels exist (e.g., Python < 3.13)
+# PostgreSQL adapter - psycopg2-binary for older Python, psycopg for 3.13+
 psycopg2-binary==2.9.7; python_version < "3.13"
+psycopg[binary]>=3.1.0; python_version >= "3.13"
 pypdf2==3.0.1
 python-dotenv==1.0.0
 requests==2.31.0
@@ -10,3 +11,7 @@ numpy>=2.1.0,<3
 openai>=1.0.0
 # Document processing - supports .docx files
 python-docx==1.1.0
+# Compatibility packages for Python 3.13
+altair>=5.0.0
+pillow>=10.0.0
+protobuf>=4.21.0
