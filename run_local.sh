@@ -104,11 +104,11 @@ echo ""
 # Install Python dependencies if needed
 if [ -f requirements.txt ]; then
     info "Checking Python dependencies..."
-    if pip3 show streamlit > /dev/null 2>&1; then
+    if python3 -m pip show streamlit > /dev/null 2>&1; then
         success "Dependencies already installed"
     else
         info "Installing Python dependencies..."
-        pip3 install -r requirements.txt > logs/pip_install.log 2>&1
+        python3 -m pip install --user -r requirements.txt > logs/pip_install.log 2>&1
         success "Dependencies installed"
     fi
 fi
@@ -143,6 +143,13 @@ fi
 
 # Start Streamlit
 info "Starting Streamlit app..."
+
+# Find streamlit command
+STREAMLIT_CMD="$HOME/.local/bin/streamlit"
+if [ ! -f "$STREAMLIT_CMD" ]; then
+    STREAMLIT_CMD="$(which streamlit 2>/dev/null || echo 'streamlit')"
+fi
+
 echo ""
 success "Starting at http://localhost:8501"
 echo ""
@@ -154,4 +161,4 @@ echo "To stop: Press Ctrl+C or run: ./menu.sh (option 5)"
 echo ""
 
 # Run streamlit (keep in foreground)
-streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0 2>&1 | tee logs/streamlit.log
+$STREAMLIT_CMD run src/app.py --server.port=8501 --server.address=0.0.0.0 2>&1 | tee logs/streamlit.log
