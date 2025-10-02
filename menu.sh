@@ -1,4 +1,5 @@
 #!/bin/bash
+mkdir -p ./logs
 
 # Interactive Menu Script for AI Agent Playground
 # This script provides a simple menu to manage your local AI interface
