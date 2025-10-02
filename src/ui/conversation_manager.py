@@ -305,6 +305,13 @@ class ConversationManagerUI:
     
     def _render_conversation_card(self, conversation: Dict):
         """Render a single conversation card"""
+        # Generate a unique key for this conversation
+        conv_id = conversation.get('id')
+        if not conv_id:
+            # If no ID, generate one from timestamp or use a hash
+            import hashlib
+            conv_id = hashlib.md5(str(conversation.get('timestamp', '')).encode()).hexdigest()[:12]
+        
         with st.expander(
             f"💬 {conversation.get('title', 'Untitled')} - {conversation.get('timestamp', '')[:19]}",
             expanded=False
@@ -313,7 +320,8 @@ class ConversationManagerUI:
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.text(f"Messages: {conversation.get('message_count', 0)}")
+                message_count = conversation.get('message_count', len(conversation.get('messages', [])))
+                st.text(f"Messages: {message_count}")
             
             with col2:
                 tags = conversation.get('tags', [])
@@ -321,13 +329,13 @@ class ConversationManagerUI:
                     st.text(f"Tags: {', '.join(tags)}")
             
             with col3:
-                st.text(f"ID: {conversation.get('id', 'N/A')[:8]}")
+                st.text(f"ID: {conv_id[:8]}")
             
             # Message preview
             messages = conversation.get('messages', [])
             if messages:
                 st.markdown("**Preview:**")
-                preview_msg = messages[0] if messages[0]['role'] == 'user' else (messages[1] if len(messages) > 1 else messages[0])
+                preview_msg = messages[0] if messages[0].get('role') == 'user' else (messages[1] if len(messages) > 1 else messages[0])
                 preview_text = preview_msg.get('content', '')[:200]
                 st.text(preview_text + "..." if len(preview_msg.get('content', '')) > 200 else preview_text)
             
@@ -337,57 +345,57 @@ class ConversationManagerUI:
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                if st.button("📖 Load", key=f"load_{conversation['id']}"):
-                    st.session_state.messages = conversation['messages']
-                    st.session_state['loaded_conversation_id'] = conversation['id']
+                if st.button("📖 Load", key=f"load_{conv_id}"):
+                    st.session_state.messages = conversation.get('messages', [])
+                    st.session_state['loaded_conversation_id'] = conv_id
                     st.success("Conversation loaded!")
                     st.rerun()
             
             with col2:
-                if st.button("🏷️ Tags", key=f"tags_{conversation['id']}"):
-                    st.session_state['edit_tags_for'] = conversation['id']
+                if st.button("🏷️ Tags", key=f"tags_{conv_id}"):
+                    st.session_state['edit_tags_for'] = conv_id
             
             with col3:
                 export_format = st.selectbox(
                     "Format",
                     ["json", "markdown", "txt"],
-                    key=f"export_format_{conversation['id']}",
+                    key=f"export_format_{conv_id}",
                     label_visibility="collapsed"
                 )
                 
                 exported = self.memory.export_conversation(
-                    conversation['id'],
+                    conv_id,
                     export_format
                 )
                 
                 if exported:
-                    filename = f"conversation_{conversation['id']}.{export_format}"
+                    filename = f"conversation_{conv_id}.{export_format}"
                     st.download_button(
                         "💾 Export",
                         data=exported,
                         file_name=filename,
-                        key=f"export_{conversation['id']}"
+                        key=f"export_{conv_id}"
                     )
             
             with col4:
-                if st.button("🗑️ Delete", key=f"delete_{conversation['id']}"):
-                    if self.memory.delete_conversation(conversation['id']):
+                if st.button("🗑️ Delete", key=f"delete_{conv_id}"):
+                    if self.memory.delete_conversation(conv_id):
                         st.success("Deleted!")
                         st.rerun()
             
             # Tag editor
-            if st.session_state.get('edit_tags_for') == conversation['id']:
+            if st.session_state.get('edit_tags_for') == conv_id:
                 st.divider()
                 current_tags = conversation.get('tags', [])
                 new_tags_input = st.text_input(
                     "Enter tags (comma-separated)",
                     value=", ".join(current_tags),
-                    key=f"new_tags_{conversation['id']}"
+                    key=f"new_tags_{conv_id}"
                 )
                 
-                if st.button("Save Tags", key=f"save_tags_{conversation['id']}"):
+                if st.button("Save Tags", key=f"save_tags_{conv_id}"):
                     new_tags = [tag.strip() for tag in new_tags_input.split(",") if tag.strip()]
-                    if self.memory.update_conversation_tags(conversation['id'], new_tags):
+                    if self.memory.update_conversation_tags(conv_id, new_tags):
                         st.success("Tags updated!")
                         del st.session_state['edit_tags_for']
                         st.rerun()
@@ -399,10 +407,12 @@ class ConversationManagerUI:
         recent = self.memory.load_conversations(limit=5)
         
         if recent:
-            for conv in recent:
+            for idx, conv in enumerate(recent):
                 title = conv.get('title', 'Untitled')[:30]
-                if st.button(f"💬 {title}", key=f"quick_{conv['id']}"):
-                    st.session_state.messages = conv['messages']
+                # Use 'id' if available, otherwise use index as fallback
+                conv_key = conv.get('id', f"conv_{idx}")
+                if st.button(f"💬 {title}", key=f"quick_{conv_key}"):
+                    st.session_state.messages = conv.get('messages', [])
                     st.success(f"Loaded: {title}")
                     st.rerun()
         else:
