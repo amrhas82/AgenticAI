@@ -98,7 +98,8 @@ quick_setup_native() {
     
     # Install Python dependencies
     info "Installing Python dependencies..."
-    if pip3 install -r requirements.txt > "$LOG_DIR/pip_install.log" 2>&1; then
+    # Use python3 -m pip to ensure we use the right pip
+    if python3 -m pip install --user -r requirements.txt > "$LOG_DIR/pip_install.log" 2>&1; then
         success "Python dependencies installed"
         log "Pip packages installed. Details in: $LOG_DIR/pip_install.log"
     else
@@ -290,7 +291,12 @@ start_services_native() {
     
     # Start Streamlit
     info "Starting Streamlit app..."
-    nohup streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0 > "$LOG_DIR/streamlit.log" 2>&1 &
+    # Use full path or python3 -m streamlit to ensure we find it
+    STREAMLIT_CMD="$HOME/.local/bin/streamlit"
+    if [ ! -f "$STREAMLIT_CMD" ]; then
+        STREAMLIT_CMD="streamlit"
+    fi
+    nohup $STREAMLIT_CMD run src/app.py --server.port=8501 --server.address=0.0.0.0 > "$LOG_DIR/streamlit.log" 2>&1 &
     STREAMLIT_PID=$!
     echo $STREAMLIT_PID > "$LOG_DIR/streamlit.pid"
     
@@ -465,7 +471,8 @@ system_info() {
     echo "Python: $(which python3 2>/dev/null || echo 'not found')" | tee -a "$LOG_DIR/system_info.log"
     echo "Ollama: $(which ollama 2>/dev/null || echo 'not found')" | tee -a "$LOG_DIR/system_info.log"
     echo "Docker: $(which docker 2>/dev/null || echo 'not found')" | tee -a "$LOG_DIR/system_info.log"
-    echo "Streamlit: $(which streamlit 2>/dev/null || echo 'not found')" | tee -a "$LOG_DIR/system_info.log"
+    STREAMLIT_PATH=$(which streamlit 2>/dev/null || echo "$HOME/.local/bin/streamlit")
+    echo "Streamlit: $STREAMLIT_PATH" | tee -a "$LOG_DIR/system_info.log"
     echo "" | tee -a "$LOG_DIR/system_info.log"
     
     echo "=== Data Locations ===" | tee -a "$LOG_DIR/system_info.log"
@@ -514,7 +521,7 @@ troubleshooting() {
         
         echo "1. System Requirements"
         echo "   Python: $(python3 --version 2>&1)"
-        echo "   Pip: $(pip3 --version 2>&1)"
+        echo "   Pip: $(python3 -m pip --version 2>&1)"
         echo "   Docker: $(docker --version 2>&1 || echo 'not installed')"
         echo "   Ollama: $(ollama --version 2>&1 || echo 'not installed')"
         echo ""
