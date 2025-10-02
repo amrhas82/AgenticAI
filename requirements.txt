@@ -6,8 +6,9 @@ psycopg[binary]>=3.1.0; python_version >= "3.13"
 pypdf2==3.0.1
 python-dotenv==1.0.0
 requests==2.31.0
-# Numpy 2.1+ provides wheels for Python 3.13
-numpy>=2.1.0,<3
+# Numpy - compatible with Python 3.8+
+numpy>=1.20.0,<2; python_version < "3.13"
+numpy>=2.1.0,<3; python_version >= "3.13"
 openai>=1.0.0
 # Document processing - supports .docx files
 python-docx==1.1.0

@@ -70,7 +70,7 @@ class AIPlaygroundApp:
         if 'theme' not in st.session_state:
             st.session_state.theme = self.config_manager.system_config.theme
         if 'current_model' not in st.session_state:
-            st.session_state.current_model = "llama2"
+            st.session_state.current_model = "deepseek-coder:1.3b"
         if 'openai_model' not in st.session_state:
             st.session_state.openai_model = "gpt-3.5-turbo"
         if 'openai_api_key' not in st.session_state:
@@ -162,11 +162,11 @@ class AIPlaygroundApp:
 
             # Agent selection
             st.subheader("Agent Settings")
-            agents = ["General Chat", "RAG Assistant", "Coder (DeepSeek style)"]
+            agents = ["Direct Chat (Fastest)", "General Chat", "RAG Assistant", "Coder (DeepSeek style)"]
             selected_agent = st.selectbox(
-                "Choose Agent:", 
+                "Choose Agent:",
                 agents,
-                index=agents.index(st.session_state.current_agent) 
+                index=agents.index(st.session_state.current_agent)
                     if st.session_state.current_agent in agents else 0
             )
             use_rag = st.toggle("Enable RAG context", value=st.session_state.use_rag)
@@ -285,11 +285,23 @@ class AIPlaygroundApp:
                 if st.session_state.provider == "Local (Ollama)":
                     try:
                         with st.spinner("Thinking..."):
-                            if agent:
-                                # Use agent system
-                                result = agent.process_message(prompt, self.ollama)
+                            # Direct chat mode - bypass agents for speed
+                            if st.session_state.current_agent == "Direct Chat (Fastest)":
+                                response = self.ollama.generate_response(
+                                    prompt,
+                                    st.session_state.messages[:-1],
+                                    st.session_state.current_model
+                                )
+                            elif agent:
+                                # Use agent system - pass the current model and conversation history
+                                result = agent.process_message(
+                                    prompt,
+                                    self.ollama,
+                                    model=st.session_state.current_model,
+                                    conversation_history=st.session_state.messages[:-1]  # Exclude current message
+                                )
                                 response = result["response"]
-                                
+
                                 # Show tool usage if applicable
                                 if result["tool_used"]:
                                     with st.expander("🔧 Tool Used"):

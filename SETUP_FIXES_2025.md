@@ -1,4 +1,4 @@
-# Setup Fixes - October 2025
+i thi# Setup Fixes - October 2025
 
 ## Issues Fixed
 

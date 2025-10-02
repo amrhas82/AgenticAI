@@ -432,22 +432,30 @@ manage_models() {
     ollama list || warn "No models installed or Ollama not running"
     echo ""
     
-    echo "Recommended models for local AI:"
-    echo "  1. llama3.2 (small, fast, 3B params)"
-    echo "  2. llama3.2:1b (tiny, very fast, 1B params)"
-    echo "  3. qwen2.5-coder:1.5b (code-focused, tiny)"
-    echo "  4. phi3.5 (small, 3.8B params)"
-    echo "  5. Custom model name"
+    echo "Recommended models for coding (BEST FOR CPU):"
+    echo "  1. deepseek-coder:1.3b (coding, fastest, 776MB) ⭐ RECOMMENDED"
+    echo "  2. qwen2.5-coder:1.5b (coding, best balance, 986MB)"
+    echo "  3. qwen2.5-coder:3b (coding, best quality, 2GB)"
+    echo ""
+    echo "General chat models:"
+    echo "  4. llama3.2:1b (general, very fast, 1.3GB)"
+    echo "  5. llama3 (general, better quality, 4.7GB)"
+    echo ""
+    echo "Other options:"
+    echo "  6. nomic-embed-text (for RAG/document search, 274MB)"
+    echo "  7. Custom model name"
     echo "  0. Return to menu"
     echo ""
-    read -p "Select a model to pull (0-5): " model_choice
-    
+    read -p "Select a model to pull (0-7): " model_choice
+
     case $model_choice in
-        1) MODEL="llama3.2" ;;
-        2) MODEL="llama3.2:1b" ;;
-        3) MODEL="qwen2.5-coder:1.5b" ;;
-        4) MODEL="phi3.5" ;;
-        5) read -p "Enter model name: " MODEL ;;
+        1) MODEL="deepseek-coder:1.3b" ;;
+        2) MODEL="qwen2.5-coder:1.5b" ;;
+        3) MODEL="qwen2.5-coder:3b" ;;
+        4) MODEL="llama3.2:1b" ;;
+        5) MODEL="llama3" ;;
+        6) MODEL="nomic-embed-text" ;;
+        7) read -p "Enter model name: " MODEL ;;
         0) return ;;
         *) error "Invalid selection"; read -p "Press Enter to return to menu..."; return ;;
     esac

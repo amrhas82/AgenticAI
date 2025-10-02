@@ -14,7 +14,7 @@ class MCPClient:
     Reference: https://github.com/Klavis-AI/klavis
     """
     
-    def __init__(self, mcp_url: str | None = None):
+    def __init__(self, mcp_url: Optional[str] = None):
         self.mcp_url = mcp_url or os.getenv("MCP_URL", "http://localhost:8080")
         self.api_key = os.getenv("MCP_API_KEY")
         self.timeout = 10

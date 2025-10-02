@@ -77,19 +77,20 @@ if [ "$MODEL_COUNT" -eq 0 ]; then
     echo ""
     echo "You need to install at least one model. Recommended options:"
     echo ""
-    echo "  Small & Fast (1-3B parameters):"
-    echo "    ollama pull llama3.2:1b          # Tiny, very fast"
-    echo "    ollama pull llama3.2             # Small, balanced"
-    echo "    ollama pull qwen2.5-coder:1.5b   # Code-focused"
+    echo "  Small & Fast (1-3B parameters - BEST FOR CPU):"
+    echo "    ollama pull llama3.2:1b          # General chat, very fast (1.3GB)"
+    echo "    ollama pull deepseek-coder:1.3b  # Coding, very fast (776MB)"
+    echo "    ollama pull qwen2.5-coder:1.5b   # Coding, excellent (986MB)"
     echo ""
     echo "  Medium (7-8B parameters):"
-    echo "    ollama pull llama3.2:7b"
-    echo "    ollama pull mistral"
+    echo "    ollama pull llama3               # General chat, better quality (4.7GB)"
+    echo "    ollama pull mistral              # General chat, fast (4.1GB)"
     echo ""
-    read -p "Pull llama3.2:1b now? (recommended for testing) [y/N]: " pull_choice
+    read -p "Pull deepseek-coder:1.3b now? (recommended for coding) [y/N]: " pull_choice
     if [ "$pull_choice" = "y" ] || [ "$pull_choice" = "Y" ]; then
-        ollama pull llama3.2:1b
-        success "Model installed!"
+        ollama pull deepseek-coder:1.3b
+        ollama pull llama3.2:1b  # Also pull general chat model
+        success "Models installed!"
     else
         echo "Please install a model manually and run this script again."
         exit 1
@@ -147,7 +148,16 @@ info "Starting Streamlit app..."
 # Find streamlit command
 STREAMLIT_CMD="$HOME/.local/bin/streamlit"
 if [ ! -f "$STREAMLIT_CMD" ]; then
-    STREAMLIT_CMD="$(which streamlit 2>/dev/null || echo 'streamlit')"
+    STREAMLIT_CMD="$(which streamlit 2>/dev/null)"
+    if [ -z "$STREAMLIT_CMD" ]; then
+        # Try running via python module
+        if python3 -m streamlit --version >/dev/null 2>&1; then
+            STREAMLIT_CMD="python3 -m streamlit"
+        else
+            error "Streamlit not found. Please install: python3 -m pip install --user streamlit"
+            exit 1
+        fi
+    fi
 fi
 
 echo ""
