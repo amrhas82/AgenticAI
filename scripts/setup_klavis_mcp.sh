@@ -28,9 +28,12 @@ print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 print_error() { echo -e "${RED}[✗]${NC} $1"; }
 
 clear
-print_header "Klavis MCP Multi-Service Setup"
+print_header "Klavis MCP Multi-Service Setup (Option 1)"
 echo ""
-print_status "This script will setup multiple Klavis MCP servers:"
+print_status "This script implements Klavis Option 1: Self-hosted infrastructure"
+echo ""
+print_status "Components:"
+echo "  • Strata MCP Router (unified endpoint)"
 echo "  • Reddit MCP Server"
 echo "  • Gmail MCP Server (requires API key)"
 echo "  • Notion MCP Server"
@@ -54,6 +57,28 @@ if ! docker info &> /dev/null; then
 fi
 
 print_success "Docker is available and running"
+
+# Check for pipx (needed for Strata)
+if ! command -v pipx &> /dev/null; then
+    print_warning "pipx is not installed (needed for Strata MCP router)"
+    print_status "Installing pipx..."
+    if command -v apt &> /dev/null; then
+        sudo apt update && sudo apt install -y pipx || {
+            print_error "Failed to install pipx via apt"
+            print_status "Try manual install: python3 -m pip install --user pipx"
+            exit 1
+        }
+        pipx ensurepath
+    elif command -v brew &> /dev/null; then
+        brew install pipx
+        pipx ensurepath
+    else
+        python3 -m pip install --user pipx
+        python3 -m pipx ensurepath
+    fi
+    print_success "pipx installed"
+fi
+
 echo ""
 
 # Configuration
@@ -195,6 +220,77 @@ if [[ $INSTALL_NOTION =~ ^[Yy]$ ]]; then
     setup_service "Notion MCP" "notion-mcp" "$NOTION_IMAGE" "$NOTION_PORT"
 fi
 
+# Install Strata MCP Router
+echo ""
+print_header "Installing Strata MCP Router"
+echo ""
+print_status "Strata is Klavis's unified MCP router that provides:"
+echo "  • Progressive tool discovery for AI agents"
+echo "  • Scalable tool integration (beyond 40-50 tool limits)"
+echo "  • Single endpoint for all MCP services"
+echo ""
+
+if command -v strata &> /dev/null; then
+    print_success "Strata is already installed"
+    strata --version || true
+else
+    print_status "Installing Strata via pipx..."
+    pipx install strata-mcp || {
+        print_error "Failed to install Strata"
+        print_warning "You can still use individual MCP containers without Strata"
+        print_status "To retry later: pipx install strata-mcp"
+    }
+
+    if command -v strata &> /dev/null; then
+        print_success "Strata installed successfully"
+        strata --version || true
+    fi
+fi
+
+# Configure Strata with installed services
+if command -v strata &> /dev/null && [ ${#INSTALLED_SERVICES[@]} -gt 0 ]; then
+    echo ""
+    print_status "Configuring Strata with installed services..."
+
+    # Create Strata config directory
+    STRATA_CONFIG_DIR="$HOME/.config/strata"
+    mkdir -p "$STRATA_CONFIG_DIR"
+
+    # Create Strata configuration file
+    cat > "$STRATA_CONFIG_DIR/config.json" << EOF
+{
+  "version": "1.0",
+  "mcpServers": {
+EOF
+
+    # Add each installed service to Strata config
+    first=true
+    for service in "${INSTALLED_SERVICES[@]}"; do
+        IFS='|' read -r name container url <<< "$service"
+        service_key=$(echo "$name" | tr '[:upper:] ' '[:lower:]_' | sed 's/_mcp//')
+
+        if [ "$first" = false ]; then
+            echo "," >> "$STRATA_CONFIG_DIR/config.json"
+        fi
+        first=false
+
+        cat >> "$STRATA_CONFIG_DIR/config.json" << SERVICEEOF
+    "$service_key": {
+      "url": "$url",
+      "transport": "http"
+    }
+SERVICEEOF
+    done
+
+    cat >> "$STRATA_CONFIG_DIR/config.json" << EOF
+
+  }
+}
+EOF
+
+    print_success "Strata configuration created at: $STRATA_CONFIG_DIR/config.json"
+fi
+
 # Configure environment
 echo ""
 print_status "Configuring environment..."
@@ -217,7 +313,15 @@ rm -f "${ENV_FILE}.tmp"
 # Add new entries
 echo "" >> "$ENV_FILE"
 echo "# Klavis MCP Configuration (added by setup_klavis_mcp.sh)" >> "$ENV_FILE"
+echo "# Option 1: Self-hosted infrastructure with Strata router" >> "$ENV_FILE"
 
+# Add Strata endpoint if installed
+if command -v strata &> /dev/null; then
+    echo "STRATA_MCP_URL=http://localhost:8080" >> "$ENV_FILE"
+    echo "USE_STRATA=true" >> "$ENV_FILE"
+fi
+
+# Add individual service URLs (for direct access or fallback)
 for service in "${INSTALLED_SERVICES[@]}"; do
     IFS='|' read -r name container url <<< "$service"
     env_name=$(echo "$name" | tr '[:lower:] ' '[:upper:]_' | sed 's/_MCP//')
@@ -244,14 +348,48 @@ fi
 
 # Create/Update integration guide
 cat > KLAVIS_MCP_GUIDE.md << 'GUIDE_EOF'
-# Klavis MCP Integration Guide
+# Klavis MCP Integration Guide (Option 1)
 
-This guide explains how to use the installed Klavis MCP servers and add more services.
+This guide explains how to use Klavis Option 1: Self-hosted MCP infrastructure with Strata router.
+
+## 🎯 What is Strata?
+
+**Strata** is Klavis's Unified MCP Router that provides:
+- **Progressive Tool Discovery**: Guides AI agents from intent → category → action → execution
+- **Scalable Integration**: Handle 50+ tools without overwhelming your agent
+- **Single Endpoint**: One URL for all MCP services (Reddit, Gmail, Notion, etc.)
+
+## 🏗️ Architecture
+
+### Without Strata (Direct Mode):
+```
+Your Agent → Reddit MCP (port 5000)
+           → Gmail MCP (port 5001)
+           → Notion MCP (port 5002)
+```
+**Problem**: Agent needs to know about all 3 services upfront
+
+### With Strata (Option 1):
+```
+Your Agent → Strata Router (port 8080)
+                   ↓
+          [Progressive Discovery]
+                   ↓
+             Reddit MCP (port 5000)
+             Gmail MCP (port 5001)
+             Notion MCP (port 5002)
+```
+**Benefit**: Agent discovers tools progressively, reducing context overload
 
 ## Installed Services
 
 Check `.env` file for configured services. Example:
 ```bash
+# Strata Router (unified endpoint)
+STRATA_MCP_URL=http://localhost:8080
+USE_STRATA=true
+
+# Individual Services (for direct access or fallback)
 MCP_REDDIT_URL=http://localhost:5000
 MCP_GMAIL_URL=http://localhost:5001
 MCP_NOTION_URL=http://localhost:5002
@@ -396,28 +534,40 @@ Then run:
 docker compose up -d
 ```
 
-## Using Klavis Client in Python
+## Using Strata Client in Python
 
-### Install Client
-```bash
-pip install klavis
-```
+### Option A: Use Strata Router (Recommended)
 
-### Basic Usage
 ```python
-from klavis import KlavisClient
+from src.klavis_strata_client import StrataClient
 
-# Connect to a service
-reddit_client = KlavisClient(
-    api_key='your_api_key',  # If required
-    base_url='http://localhost:5000'  # Reddit MCP
+# Create client (reads from .env automatically)
+client = StrataClient()
+
+# Progressive discovery - Step 1: Discover categories
+categories = client.discover_categories()
+# Returns: ["reddit", "gmail", "notion"]
+
+# Progressive discovery - Step 2: Discover actions in a category
+reddit_actions = client.discover_actions("reddit")
+# Returns: List of available Reddit tools
+
+# List all available tools
+tools = client.list_tools()
+
+# Call a tool
+result = client.call_tool(
+    "reddit_get_hot_posts",
+    {"subreddit": "python", "limit": 5}
 )
 
-# Use the client (check Klavis docs for specific methods)
-# Example usage will depend on the service
+# Health check
+health = client.health_check()
+print(health)
 ```
 
-### Multiple Services
+### Option B: Use Direct Service URLs (Fallback)
+
 ```python
 from klavis import KlavisClient
 import os
@@ -428,91 +578,137 @@ gmail_url = os.getenv('MCP_GMAIL_URL', 'http://localhost:5001')
 notion_url = os.getenv('MCP_NOTION_URL', 'http://localhost:5002')
 api_key = os.getenv('KLAVIS_API_KEY')
 
-# Create clients
+# Create clients for each service
 reddit = KlavisClient(base_url=reddit_url)
 gmail = KlavisClient(api_key=api_key, base_url=gmail_url)
 notion = KlavisClient(base_url=notion_url)
 ```
 
-## Integrating with AI Agents
+### Automatic Fallback
 
-To integrate Klavis MCP with your AI agents, you'll need to:
+The `StrataClient` automatically falls back to direct URLs if Strata is unavailable:
 
-### 1. Install Klavis Client
-```bash
-pip install klavis
+```python
+client = StrataClient()
+
+# If Strata is down, client automatically uses direct service URLs
+# No code changes needed!
+result = client.call_tool("reddit_get_hot_posts", {...})
 ```
 
-### 2. Create Klavis Tool Wrapper
+## Integrating with AI Agents
+
+### Using Strata Client (Recommended)
+
+The Strata client provides progressive discovery and automatic fallback.
+
+### 1. Create Strata Tool Wrapper
 
 Edit `src/agents/agent_system.py` and add:
 
 ```python
-from klavis import KlavisClient
+from src.klavis_strata_client import StrataClient
+from typing import Any, Dict
 
-class KlavisMCPTool(Tool):
-    """Tool for Klavis MCP services"""
-    
-    def __init__(self, service_name: str, base_url: str, api_key: str = None):
-        self.service_name = service_name
-        self.client = KlavisClient(base_url=base_url, api_key=api_key)
-    
+class StrataMCPTool(Tool):
+    """Tool for Klavis Strata MCP router"""
+
+    def __init__(self):
+        self.client = StrataClient()
+        self._categories = None
+
     def name(self) -> str:
-        return f"klavis_{self.service_name}"
-    
+        return "strata_mcp"
+
     def description(self) -> str:
-        return f"Access {self.service_name} via Klavis MCP"
-    
-    def execute(self, method: str, **kwargs) -> Any:
-        """Execute a method on the Klavis client"""
+        return "Access Reddit, Gmail, Notion, and other services via Klavis Strata MCP router. Supports progressive tool discovery."
+
+    def get_categories(self) -> list:
+        """Discover available service categories"""
+        if self._categories is None:
+            self._categories = self.client.discover_categories()
+        return self._categories
+
+    def discover_actions(self, category: str) -> list:
+        """Discover available actions in a category"""
+        return self.client.discover_actions(category)
+
+    def execute(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        """Execute a tool via Strata"""
         try:
-            # This will depend on the specific service's API
-            # Check Klavis docs for each service
-            result = getattr(self.client, method)(**kwargs)
+            result = self.client.call_tool(tool_name, parameters)
             return result
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e), "tool": tool_name}
 ```
 
-### 3. Add Tools to Agents
+### 2. Add Strata Tool to Agents
 
 ```python
 # In create_default_agents() method
 import os
 
-# Load MCP URLs from environment
-reddit_url = os.getenv('MCP_REDDIT_URL')
-gmail_url = os.getenv('MCP_GMAIL_URL')
-notion_url = os.getenv('MCP_NOTION_URL')
-api_key = os.getenv('KLAVIS_API_KEY')
+# Check if Strata is enabled
+if os.getenv('USE_STRATA', 'false').lower() == 'true':
+    strata_tool = StrataMCPTool()
 
-klavis_tools = []
-
-if reddit_url:
-    klavis_tools.append(KlavisMCPTool('reddit', reddit_url))
-
-if gmail_url and api_key:
-    klavis_tools.append(KlavisMCPTool('gmail', gmail_url, api_key))
-
-if notion_url:
-    klavis_tools.append(KlavisMCPTool('notion', notion_url))
-
-# Add to agent
-if klavis_tools:
-    klavis_agent = Agent(
+    # Create agent with Strata tool
+    strata_agent = Agent(
         AgentConfig(
-            name="Klavis Assistant",
-            system_prompt="You have access to Reddit, Gmail, and Notion via Klavis MCP.",
+            name="Strata Assistant",
+            system_prompt="""You have access to multiple services via Strata MCP router.
+
+Available categories: {categories}
+
+Use progressive discovery:
+1. Call get_categories() to see what's available
+2. Call discover_actions(category) to see actions in a category
+3. Call execute(tool_name, parameters) to run the action
+
+Examples:
+- Reddit: execute("reddit_get_hot_posts", {{"subreddit": "python", "limit": 5}})
+- Gmail: execute("gmail_list_messages", {{"max_results": 10}})
+- Notion: execute("notion_query_database", {{"database_id": "..."}})
+""".format(categories=", ".join(strata_tool.get_categories())),
             temperature=0.6
         ),
-        tools=klavis_tools
+        tools=[strata_tool]
     )
-    self.register(klavis_agent)
+    self.register(strata_agent)
+else:
+    # Fallback to direct MCP clients (see Option B above)
+    pass
+```
+
+### 3. Test Integration
+
+```python
+# Test script: test_strata.py
+from src.klavis_strata_client import StrataClient
+
+client = StrataClient()
+
+# Test health
+print("Health:", client.health_check())
+
+# Test discovery
+print("\nCategories:", client.discover_categories())
+
+# Test Reddit
+result = client.call_tool(
+    "reddit_get_hot_posts",
+    {"subreddit": "python", "limit": 3}
+)
+print("\nReddit result:", result)
 ```
 
 ### 4. Restart Application
 ```bash
-docker compose restart streamlit-app
+# If using systemd
+systemctl --user restart agentic-ai
+
+# If using manual mode
+./run_local.sh
 ```
 
 ## Troubleshooting
