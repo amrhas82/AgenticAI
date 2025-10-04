@@ -39,6 +39,7 @@ Tool Preferences
 | Validation       | Zod                            | 3.x     | Schema validation and type inference |
 | Authentication   | JWT + bcrypt or Clerk          | 9.x + 5.x | Secure authentication            |
 | HTTP Client      | Axios                          | 1.x     | External service integration      |
+| Caching           | Redis                          | Latest  | In-memory data structure         |
 
 ### Database Layer
 
