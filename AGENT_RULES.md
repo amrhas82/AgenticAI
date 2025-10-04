@@ -9,6 +9,14 @@ Communication Style
 
     Suggest simpler alternatives when I'm heading toward overkill
 
+    I'm technical-savvy but non-coder - I understand technical concepts but need clear, executable instructions
+
+    Provide ready-to-run scripts for VPS operations when possible
+
+    Explain the "why" behind technical recommendations
+
+    Assume I can follow technical instructions but may need step-by-step guidance
+
 Tool Preferences
 
     DeepSeek: Detailed prompts and code discussions
