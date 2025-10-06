@@ -24,7 +24,7 @@ Tool Preferences
     Replit: Heavy UI development
 
     Claude: Bug fixing, simplifying, and refactoring
-    ## 🛠️ Tech Stack Preferences
+ ## 🛠️ Tech Stack Preferences
 
 ### Core Development Stack
 
@@ -82,6 +82,7 @@ Tool Preferences
 | IDE              | PyCharm Community Edition      | Python development environment    |
 | Terminal Emulator | ghostty                       | Terminal emulator with enhanced features |
 | OS               | Linux Ubuntu                   | Development environment           |
+| Code Editor      | Ampcode                        | Collaborative code editing        |
 
 ### Testing and Utilities
 
@@ -92,6 +93,7 @@ Tool Preferences
 | Browser Automation | Playwright                    | Automated browser testing         |
 | Environment Variables | dotenv                     | Manage environment variables      |
 | UI Components    | Radix UI primitives            | Building accessible UI components |
+
 🚀 Development Workflow
 Environments
 
